@@ -31,7 +31,7 @@ client.on("messageCreate", async (msg) => {
   if (msg.author?.id === client.user?.id) return;
   if (!msg.content) return;
 
-  console.log(`[${msg.author.displayName}] - ${msg.content}`);
+  // console.log(`[${msg.author.displayName}] - ${msg.content}`);
   const history = client.cache.messages.get(msg.channel.id) || [];
 
   history.push({
@@ -79,21 +79,26 @@ client.on("messageCreate", async (msg) => {
   } else if (msg.content.toLowerCase().startsWith("!deletar")) {
     const sent = await client.sendMessage(msg.channel.id, "Vou deletar essa msg em 3s");
     setTimeout(() => { client.deleteMessage(sent.id); }, 3000);
-  } else if (msg.content.toLowerCase().startsWith("!eval") && msg.author.id === 1) {
+  } else if (msg.content.toLowerCase().startsWith("!eval") && (msg.author.id === 1 || msg.author.id === 2) ) {
     try {
       const args = msg.content.slice(5).trim().split(/ +/g);
-      let evaled = eval(args.join(" "));
+      let result = eval(args.join(" "));
 
-      if (evaled instanceof Promise) {
-        await evaled;
+      if (result instanceof Promise) {
+        await result;
       }
 
-      await client.sendMessage(msg.channel.id, `\`\`\`js\n${require('util').inspect(evaled)}\n\`\`\``.slice(0, 1950));
+      result = require('util').inspect(result, { depth: 1 })
+      result = result.replace(client.token, "[TOKEN]");
+
+      await client.sendMessage(msg.channel.id, `\`\`\`js\n${result}\n\`\`\``.slice(0, 1950));
     } catch (err) {
       await client.sendMessage(msg.channel.id, `\`\`\`js\n${err}\n\`\`\``)
     }
   }
 });
+
+client.on("")
 
 
 
