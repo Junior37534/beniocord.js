@@ -37,7 +37,7 @@ class Client extends EventEmitter {
     try {
       const response = await axios.get(`${this.apiUrl}/api/auth/verify`, {
         headers: { Authorization: `Bearer ${this.token}` },
-        timeout: 5000
+        timeout: 15000
       });
 
       return response.data;
@@ -61,9 +61,7 @@ class Client extends EventEmitter {
 
   async login() {
     try {
-      // First validate the token
       await this.validateToken();
-
       return await this.connectSocket();
     } catch (error) {
       this.emit("error", error);
@@ -88,10 +86,14 @@ class Client extends EventEmitter {
         reconnectionAttempts: this.maxRetries
       });
 
-      this.socket.on("connect", () => {
+      this.socket.on("connect", async () => {
         clearTimeout(connectionTimeout);
         this.isConnected = true;
         this.retryCount = 0;
+        await this.fetchMe();
+        if (!this.user.isBot) {
+          throw new Error("The provided token does not belong to a bot user");
+        }
         this.emit("ready");
         resolve();
       });
@@ -141,7 +143,7 @@ class Client extends EventEmitter {
       });
 
       // Message handlers
-      this.socket.on("message:new", (data) => {
+      this.socket.on("message:new", async (data) => {
         const msg = new Message(data, this);
 
         if (!msg.author && data.user_id) {
@@ -153,22 +155,30 @@ class Client extends EventEmitter {
           };
         }
         if (!msg.channel && data.channel_id) {
-          msg.channel = {
-            id: data.channel_id,
-          };
+          msg.channel = await this.fetchChannel(data.channel_id)
         }
 
-        if (msg.author) this.cache.users.set(msg.author.id, msg.author);
-        if (msg.channel) this.cache.channels.set(msg.channel.id, msg.channel);
+        if (msg.author) {
+          msg.author = ensureCached(
+            this.cache.users,
+            msg.author.id,
+            new User(msg.author, this)
+          );
+        }
 
         if (msg.channel) {
-          const channelId = msg.channel.id;
-          if (!this.cache.messages.has(channelId)) {
-            this.cache.messages.set(channelId, []);
+          msg.channel = ensureCached(
+            this.cache.channels,
+            msg.channel.id,
+            new Channel(msg.channel, this)
+          );
+
+          if (!this.cache.messages.has(msg.channel.id)) {
+            this.cache.messages.set(msg.channel.id, []);
           }
-          const msgs = this.cache.messages.get(channelId);
-          msgs.push(msg);
-          if (msgs.length > 50) msgs.shift();
+          msg.channel.messages = this.cache.messages.get(msg.channel.id);
+          msg.channel.messages.push(msg);
+          if (msg.channel.messages.length > 50) msg.channel.messages.shift();
         }
 
         this.emit("messageCreate", msg);
@@ -189,7 +199,6 @@ class Client extends EventEmitter {
       this.socket.on('message:edited', (data) => {
         const { messageId, content, editedAt } = data;
 
-        // Atualizar mensagem no cache
         for (const [channelId, messages] of this.cache.messages) {
           const msg = messages.find(m => m.id === messageId);
           if (msg) {
@@ -260,12 +269,33 @@ class Client extends EventEmitter {
         this.cache.channels.delete(data.channelId);
         this.emit('channelDelete', data);
       });
+
+      function ensureCached(map, key, value) {
+        const existing = map.get(key);
+        if (existing) return existing;
+        map.set(key, value);
+        return value;
+      }
     });
   }
 
   ensureConnected() {
     if (!this.socket || !this.socket.connected || !this.isConnected) {
       throw new Error("Socket is not connected - please call login() first");
+    }
+  }
+
+  // ==================== CLIENT USER ====================
+
+  setStatus(status) {
+    try {
+      if (!["online", "offline", "away", "dnd"].includes(status)) {
+        throw new Error('Invalid status. Valid statuses are: "online", "offline", "away", "dnd"');
+      }
+      this.ensureConnected();
+      this.socket.emit('status:update', { status });
+    } catch (error) {
+      this.emit("error", error);
     }
   }
 
@@ -453,7 +483,7 @@ class Client extends EventEmitter {
       });
 
       const channels = res.data.map(c => {
-        const channel = new Channel(c);
+        const channel = new Channel(c, this);
         this.cache.channels.set(channel.id, channel);
         return channel;
       });
@@ -478,7 +508,7 @@ class Client extends EventEmitter {
         headers: { Authorization: `Bearer ${this.token}` },
         timeout: 5000
       });
-      const channel = new Channel(res.data);
+      const channel = new Channel(res.data, this);
       this.cache.channels.set(channel.id, channel);
       return channel;
     } catch (error) {
@@ -494,14 +524,24 @@ class Client extends EventEmitter {
     }
   }
 
-  async createChannel(data) {
+  async createChannel({ name, description = "" }) {
     try {
+      if (!name || name.trim() === "") {
+        throw new Error("Channel name is required");
+      }
+
+      const data = {
+        name: name.trim(),
+        description,
+        type: "text"
+      };
+
       const res = await axios.post(`${this.apiUrl}/api/channels`, data, {
         headers: { Authorization: `Bearer ${this.token}` },
         timeout: 5000
       });
 
-      const channel = new Channel(res.data.channel);
+      const channel = new Channel(res.data.channel, this);
       this.cache.channels.set(channel.id, channel);
       return channel;
     } catch (error) {
@@ -512,19 +552,28 @@ class Client extends EventEmitter {
       } else if (error.code === 'ECONNABORTED') {
         throw new Error("Request timeout");
       } else {
-        throw new Error("Failed to create channel");
+        throw error;
       }
     }
   }
 
-  async updateChannel(channelId, data) {
+  async updateChannel(channelId, { name, description }) {
     try {
+      if (!name && !description) {
+        throw new Error("At least one field must be provided to update");
+      }
+
+      const data = {};
+      if (name !== undefined) data.name = name.trim();
+      if (description !== undefined) data.description = description;
+      data.type = "text";
+
       const res = await axios.patch(`${this.apiUrl}/api/channels/${channelId}`, data, {
         headers: { Authorization: `Bearer ${this.token}` },
         timeout: 5000
       });
 
-      const channel = new Channel(res.data.channel);
+      const channel = new Channel(res.data.channel, this);
       this.cache.channels.set(channel.id, channel);
       return channel;
     } catch (error) {
@@ -537,7 +586,7 @@ class Client extends EventEmitter {
       } else if (error.code === 'ECONNABORTED') {
         throw new Error("Request timeout");
       } else {
-        throw new Error("Failed to update channel");
+        throw error;
       }
     }
   }
@@ -695,7 +744,30 @@ class Client extends EventEmitter {
     }
   }
 
-  // ==================== PRESENCE ====================
+  async fetchMe() {
+    // if (this.cache.users.has(id)) return this.cache.users.get(id);
+
+    try {
+      const res = await axios.get(`${this.apiUrl}/api/users/me`, {
+        headers: { Authorization: `Bearer ${this.token}` },
+        timeout: 5000
+      });
+      const user = new User(res.data);
+      this.cache.users.set(user.id, user);
+      this.user = user;
+      return user;
+    } catch (error) {
+      if (error.response?.status === 401) {
+        throw new Error("Invalid token was provided");
+      } else if (error.response?.status === 404) {
+        throw new Error("Not found");
+      } else if (error.code === 'ECONNABORTED') {
+        throw new Error("Request timeout");
+      } else {
+        throw new Error("Failed to fetch me");
+      }
+    }
+  }
 
   async fetchPresence(userId) {
     // if (this.cache.presence.has(userId)) return this.cache.presence.get(userId);
@@ -716,7 +788,7 @@ class Client extends EventEmitter {
       } else if (error.code === 'ECONNABORTED') {
         throw new Error("Request timeout");
       } else {
-        throw new Error("Failed to fetch presence");
+        throw new Error("Failed to fetch presence: " + error.message);
       }
     }
   }
