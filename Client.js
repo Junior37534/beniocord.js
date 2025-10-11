@@ -1,6 +1,9 @@
 const { io } = require("socket.io-client");
 const axios = require("axios");
 const EventEmitter = require("events");
+const FormData = require('form-data');
+const fs = require('fs');
+const path = require('path');
 
 const Message = require("./structures/Message");
 const User = require("./structures/User");
@@ -302,41 +305,90 @@ class Client extends EventEmitter {
   // ==================== MESSAGES ====================
 
   async sendMessage(channelId, content, opts = {}) {
-    return new Promise((resolve, reject) => {
+    return new Promise(async (resolve, reject) => {
       try {
         this.ensureConnected();
-      } catch (error) {
-        return reject(error);
-      }
 
-      const timeout = setTimeout(() => {
-        reject(new Error("Message send timeout"));
-      }, 15000);
+        let fileData = null;
 
-      this.socket.emit(
-        'message:send',
-        {
-          channelId,
-          content,
-          messageType: opts.messageType || 'text',
-          replyTo: opts.replyTo || null,
-          fileUrl: opts.fileUrl || null,
-          fileName: opts.fileName || null,
-          fileSize: opts.fileSize || null,
-          stickerId: opts.stickerId || null,
-        },
-        (response) => {
-          clearTimeout(timeout);
-          if (response && response.error) {
-            reject(new Error(response.error));
-          } else {
-            resolve(response);
+        if (opts.file) {
+          try {
+            if (!fs.existsSync(opts.file)) {
+              throw new Error('File not found');
+            }
+
+            const ext = path.extname(opts.file).toLowerCase();
+            const imageExts = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.svg'];
+            const videoExts = ['.mp4', '.avi', '.mov', '.wmv', '.flv', '.mkv', '.webm'];
+
+            let detectedType;
+            if (imageExts.includes(ext)) {
+              detectedType = 'image';
+            } else if (videoExts.includes(ext)) {
+              detectedType = 'video';
+            } else {
+              detectedType = 'file';
+            }
+
+            const fileStream = fs.createReadStream(opts.file);
+            const fileName = path.basename(opts.file);
+
+            const formData = new FormData();
+            formData.append('file', fileStream, fileName);
+
+            const axios = require('axios');
+
+            const uploadResponse = await axios.post(`${this.apiUrl}/api/upload`, formData, {
+              headers: {
+                'Authorization': `Bearer ${this.token}`,
+                ...formData.getHeaders()
+              }
+            });
+
+            fileData = uploadResponse.data;
+
+            opts.fileUrl = fileData.url;
+            opts.fileName = fileData.originalName;
+            opts.fileSize = fileData.size;
+            opts.messageType = opts.messageType || detectedType;
+
+          } catch (uploadError) {
+            return reject(new Error(`File upload error: ${uploadError.message}`));
           }
         }
-      );
+
+        const timeout = setTimeout(() => {
+          reject(new Error("Message send timeout"));
+        }, 15000);
+
+        this.socket.emit(
+          'message:send',
+          {
+            channelId,
+            content: content || (fileData ? fileData.originalName : ''),
+            messageType: opts.messageType || 'text',
+            replyTo: opts.replyTo || null,
+            fileUrl: opts.fileUrl || null,
+            fileName: opts.fileName || null,
+            fileSize: opts.fileSize || null,
+            stickerId: opts.stickerId || null,
+          },
+          (response) => {
+            clearTimeout(timeout);
+            if (response && response.error) {
+              reject(new Error(response.error));
+            } else {
+              resolve(response);
+            }
+          }
+        );
+
+      } catch (error) {
+        reject(error);
+      }
     });
   }
-
+  
   async editMessage(messageId, newContent) {
     return new Promise((resolve, reject) => {
       try {
@@ -625,7 +677,7 @@ class Client extends EventEmitter {
       });
 
       const members = res.data.map(m => {
-        const user = new User(m);
+        const user = new User(m, this);
         this.cache.users.set(user.id, user);
         return user;
       });
@@ -728,7 +780,7 @@ class Client extends EventEmitter {
         headers: { Authorization: `Bearer ${this.token}` },
         timeout: 5000
       });
-      const user = new User(res.data);
+      const user = new User(res.data, this);
       this.cache.users.set(user.id, user);
       return user;
     } catch (error) {
@@ -752,7 +804,7 @@ class Client extends EventEmitter {
         headers: { Authorization: `Bearer ${this.token}` },
         timeout: 5000
       });
-      const user = new User(res.data);
+      const user = new User(res.data, this);
       this.cache.users.set(user.id, user);
       this.user = user;
       return user;
@@ -803,7 +855,7 @@ class Client extends EventEmitter {
         headers: { Authorization: `Bearer ${this.token}` },
         timeout: 5000
       });
-      const emoji = new Emoji(res.data);
+      const emoji = new Emoji(res.data, this.apiUrl);
       this.cache.emojis.set(emoji.id, emoji);
       return emoji;
     } catch (error) {
@@ -835,7 +887,7 @@ class Client extends EventEmitter {
       });
 
       const emojis = res.data.map(e => {
-        const emoji = new Emoji(e);
+        const emoji = new Emoji(e, this.apiUrl);
         this.cache.emojis.set(emoji.id, emoji);
         return emoji;
       });
@@ -908,41 +960,12 @@ class Client extends EventEmitter {
     }
   }
 
-  // ==================== FILE UPLOAD ====================
-
-  async uploadFile(file) {
-    try {
-      const formData = new FormData();
-      formData.append('file', file);
-
-      const res = await axios.post(`${this.apiUrl}/api/upload`, formData, {
-        headers: {
-          Authorization: `Bearer ${this.token}`,
-          'Content-Type': 'multipart/form-data'
-        },
-        timeout: 30000 // 30 seconds for file uploads
-      });
-
-      return res.data;
-    } catch (error) {
-      if (error.response?.status === 401) {
-        throw new Error("Invalid token was provided");
-      } else if (error.response?.status === 400) {
-        throw new Error("No file provided");
-      } else if (error.code === 'ECONNABORTED') {
-        throw new Error("Upload timeout");
-      } else {
-        throw new Error("Failed to upload file");
-      }
-    }
-  }
-
   // ==================== TYPING INDICATORS ====================
 
   startTyping(channelId) {
     try {
       this.ensureConnected();
-      this.socket.emit('typing:start', { channelId });
+      return this.socket.emit('typing:start', { channelId });
     } catch (error) {
       this.emit("error", error);
     }
@@ -951,7 +974,7 @@ class Client extends EventEmitter {
   stopTyping(channelId) {
     try {
       this.ensureConnected();
-      this.socket.emit('typing:stop', { channelId });
+      return this.socket.emit('typing:stop', { channelId });
     } catch (error) {
       this.emit("error", error);
     }
