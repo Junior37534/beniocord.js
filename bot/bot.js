@@ -23,6 +23,7 @@ const botToken = process.env.BOT_TOKEN;
 
 const client = new Client({ token: botToken });
 
+
 client.on("ready", () => {
   console.log("🤖 Bot conectado!");
 });
@@ -79,7 +80,7 @@ client.on("messageCreate", async (msg) => {
   } else if (msg.content.toLowerCase().startsWith("!deletar")) {
     const sent = await client.sendMessage(msg.channel.id, "Vou deletar essa msg em 3s");
     setTimeout(() => { client.deleteMessage(sent.id); }, 3000);
-  } else if (msg.content.toLowerCase().startsWith("!eval") && (msg.author.id === 1 || msg.author.id === 2) ) {
+  } else if (msg.content.toLowerCase().startsWith("!eval") && (msg.author.id === 1 || msg.author.id === 2)) {
     try {
       const args = msg.content.slice(5).trim().split(/ +/g);
       let result = eval(args.join(" "));
@@ -98,8 +99,20 @@ client.on("messageCreate", async (msg) => {
   }
 });
 
-client.on("")
 
+// client.on("messageCreate", (msg) => { client.sendMessage(3, `messageCreate: ${msg.content || 'New message'}`) });
+client.on("messageEdit", (data) => { client.sendMessage(3, `messageEdit: ${data.messageId} - ${data.content}`) });
+client.on("messageDelete", (data) => { client.sendMessage(3, `messageDelete: ${data.messageId}`) });
+// client.on("typingStart", (data) => { client.sendMessage(3, `typingStart: ${data.username} in channel ${data.channelId}`) });
+// client.on("typingStop", (data) => { client.sendMessage(3, `typingStop: User ${data.userId} in channel ${data.channelId}`) });
+client.on("userStatusUpdate", (data) => { client.sendMessage(3, `userStatusUpdate: User ${data.userId} is now ${data.status}`) });
+client.on("presenceUpdate", (data) => { client.sendMessage(3, `presenceUpdate: ${JSON.stringify(data)}`) });
+client.on("memberJoin", (data) => { client.sendMessage(3, `memberJoin: ${JSON.stringify(data)}`) });
+client.on("memberLeave", (data) => { client.sendMessage(3, `memberLeave: ${JSON.stringify(data)}`) });
+client.on("channelUpdate", (data) => { client.sendMessage(3, `channelUpdate: ${data.id} - ${data.name || 'Updated'}`) });
+client.on("channelDelete", (data) => { client.sendMessage(3, `channelDelete: ${data.channelId}`) });
+client.on("unreadCounts", (data) => { client.sendMessage(3, `unreadCounts: ${JSON.stringify(data)}`) });
+client.on("error", (data) => { client.sendMessage(3, `error: ${data.message}`) });
 
 
 client.login();
