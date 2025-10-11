@@ -313,15 +313,60 @@ class Client extends EventEmitter {
 
         if (opts.file) {
           try {
-            if (!fs.existsSync(opts.file)) {
-              throw new Error('File not found');
+            let fileBuffer;
+            let fileName;
+            let detectedType;
+
+            if (Buffer.isBuffer(opts.file)) {
+              if (!opts.fileName) {
+                throw new Error('fileName is required when sending a Buffer');
+              }
+              fileBuffer = opts.file;
+              fileName = opts.fileName;
+            } else if (typeof opts.file === 'string') {
+              if (opts.file.startsWith('data:')) {
+                const matches = opts.file.match(/^data:([^;]+);base64,(.+)$/);
+                if (!matches) {
+                  throw new Error('Invalid base64 string');
+                }
+
+                const mimeType = matches[1];
+                const base64Data = matches[2];
+                fileBuffer = Buffer.from(base64Data, 'base64');
+
+                const mimeToExt = {
+                  'image/png': '.png',
+                  'image/jpeg': '.jpg',
+                  'image/jpg': '.jpg',
+                  'image/gif': '.gif',
+                  'image/webp': '.webp',
+                  'video/mp4': '.mp4',
+                  'video/webm': '.webm',
+                };
+
+                const ext = mimeToExt[mimeType] || '.bin';
+                fileName = opts.fileName || `file${ext}`;
+              } else if (opts.file.match(/^[A-Za-z0-9+/=]+$/)) {
+                if (!opts.fileName) {
+                  throw new Error('fileName is required when sending base64 without data URI');
+                }
+                fileBuffer = Buffer.from(opts.file, 'base64');
+                fileName = opts.fileName;
+              } else {
+                if (!fs.existsSync(opts.file)) {
+                  throw new Error('File not found');
+                }
+                fileBuffer = fs.readFileSync(opts.file);
+                fileName = path.basename(opts.file);
+              }
+            } else {
+              throw new Error('Invalid file type. Expected Buffer, base64 string, or file path');
             }
 
-            const ext = path.extname(opts.file).toLowerCase();
+            const ext = path.extname(fileName).toLowerCase();
             const imageExts = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.svg'];
             const videoExts = ['.mp4', '.avi', '.mov', '.wmv', '.flv', '.mkv', '.webm'];
 
-            let detectedType;
             if (imageExts.includes(ext)) {
               detectedType = 'image';
             } else if (videoExts.includes(ext)) {
@@ -330,11 +375,8 @@ class Client extends EventEmitter {
               detectedType = 'file';
             }
 
-            const fileStream = fs.createReadStream(opts.file);
-            const fileName = path.basename(opts.file);
-
             const formData = new FormData();
-            formData.append('file', fileStream, fileName);
+            formData.append('file', fileBuffer, fileName);
 
             const axios = require('axios');
 
@@ -388,7 +430,7 @@ class Client extends EventEmitter {
       }
     });
   }
-  
+
   async editMessage(messageId, newContent) {
     return new Promise((resolve, reject) => {
       try {
