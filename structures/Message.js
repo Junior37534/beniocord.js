@@ -14,9 +14,23 @@ class Message {
     this.createdAt = data.created_at;
     this.stickerId = data.sticker_id;
 
+    this.attachments = new Map();
+
+    if (data.file_url) {
+      this.attachments.set(this.fileUrl, {
+        url: this.fileUrl,
+        name: this.fileName,
+        size: this.fileSize,
+      });
+    }
+
+    this.mentions = { users: new Map(), channels: new Map(), members: new Map() };
+
     // this.author = data.user ? new User(data.user, this) : null;
     this.author = data.user ? new User(data.user, client) : null;
     this.channel = data.channel ? new Channel(data.channel, client) : null;
+
+    this.member = { user: this.author }
 
     this.client = client;
   }
@@ -25,6 +39,14 @@ class Message {
     return this.client.sendMessage(this.channel.id, content, {
       replyTo: this.id,
     });
+  }
+
+  async edit(content) {
+    return this.client.editMessage(this.id, content);
+  }
+
+  async delete() {
+    return this.client.deleteMessage(this.id);
   }
 }
 

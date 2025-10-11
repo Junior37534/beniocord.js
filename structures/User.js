@@ -12,6 +12,14 @@ class User {
     // this.email = data.email;
     // this.updatedAt = data.updated_at;
   }
+
+  displayAvatarURL() {
+    return this.avatarUrl;
+  }
+
+  avatarURL() {
+    return this.avatarUrl;
+  }
 }
 
 module.exports = User;
