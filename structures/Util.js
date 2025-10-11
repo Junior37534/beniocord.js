@@ -1,3 +1,5 @@
+/* Compatibilidade com outros sistemas */
+
 class MessageEmbed {
     setTitle(title) {
         this.title = title;
