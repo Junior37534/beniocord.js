@@ -24,14 +24,10 @@ class Message {
       });
     }
 
-    this.mentions = { users: new Map(), channels: new Map(), members: new Map() };
-
     // this.author = data.user ? new User(data.user, this) : null;
     this.author = data.user ? new User(data.user, client) : null;
     this.channel = data.channel ? new Channel(data.channel, client) : null;
-
-    this.member = { user: this.author }
-
+    // this.member = { user: this.author }
     this.client = client;
   }
 
