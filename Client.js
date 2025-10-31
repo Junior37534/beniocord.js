@@ -140,6 +140,7 @@ class Client extends EventEmitter {
       await this.validateToken();
       await this._connectSocket();
       await this.fetchMe();
+      await this.setStatus('online');
 
       if (!this.user.isBot) {
         this.disconnect();
@@ -418,7 +419,7 @@ class Client extends EventEmitter {
   /**
    * @param {string} status - online, offline, away, dnd
    */
-  setStatus(status) {
+  async setStatus(status) {
     const validStatuses = ["online", "offline", "away", "dnd"];
 
     if (!validStatuses.includes(status)) {
@@ -433,66 +434,167 @@ class Client extends EventEmitter {
   }
 
   /**
-   * @param {string} channelId
-   * @param {string|MessageEmbed} content
-   * @param {object} opts
+   * Envia uma mensagem para um canal
+   * @param {string} channelId - ID do canal
+   * @param {string|MessageEmbed} content - Conteúdo da mensagem ou MessageEmbed
+   * @param {Object|MessageAttachment} opts - Opções adicionais
+   * @returns {Promise<Message>}
    */
+  // async sendMessage(channelId, content, opts = {}) {
+  //   return new Promise(async (resolve, reject) => {
+  //     try {
+  //       this._ensureConnected();
+
+  //       let toSend = content;
+
+  //       if (content instanceof MessageEmbed) {
+  //         toSend = content.toText();
+  //       }
+
+  //       if (opts instanceof MessageAttachment) {
+  //         const uploadedFile = await this.uploadFile(opts);
+
+  //         if (uploadedFile) {
+  //           const mimetype = opts.name.split('.').pop().toLowerCase();
+  //           const messageType = ['png', 'jpg', 'jpeg', 'gif', 'webp'].includes(mimetype)
+  //             ? 'image'
+  //             : 'file';
+
+  //           opts = {
+  //             fileUrl: uploadedFile.url,
+  //             fileName: uploadedFile.originalName,
+  //             fileSize: uploadedFile.size,
+  //             messageType
+  //           };
+  //         }
+  //       }
+
+  //       if (opts.file) {
+  //         const fileData = await this._handleFileUpload(opts.file, opts.fileName);
+  //         opts.fileUrl = fileData.url;
+  //         opts.fileName = fileData.originalName;
+  //         opts.fileSize = fileData.size;
+  //         opts.messageType = opts.messageType || fileData.detectedType;
+  //       }
+
+  //       // const timeout = setTimeout(() => {
+  //       //   reject(new ClientError("Message send timeout", "SEND_TIMEOUT"));
+  //       // }, 15000);
+
+  //       this.socket.emit(
+  //         'message:send',
+  //         {
+  //           channelId,
+  //           content: toSend,
+  //           messageType: opts.messageType || 'text',
+  //           replyTo: opts.replyTo || null,
+  //           fileUrl: opts.fileUrl || null,
+  //           fileName: opts.fileName || null,
+  //           fileSize: opts.fileSize || null,
+  //           stickerId: opts.stickerId || null,
+  //         },
+  //         async (response) => {
+  //           // clearTimeout(timeout);
+
+  //           if (response && response.error) {
+  //             reject(new ClientError(response.error, "SEND_ERROR"));
+  //           } else {
+  //             this._sentMessages.add(response.id);
+  //             const msg = await this._processSocketMessage(response);
+  //             this._cacheMessage(msg);
+  //             resolve(msg);
+  //           }
+  //         }
+  //       );
+
+  //     } catch (error) {
+  //       reject(error instanceof ClientError ? error : new ClientError(error.message, "SEND_ERROR"));
+  //     }
+  //   });
+  // }
   async sendMessage(channelId, content, opts = {}) {
     return new Promise(async (resolve, reject) => {
       try {
         this._ensureConnected();
 
         let toSend = content;
+        let messageType = 'text';
+        let embedData = null;
 
+        // Se o conteúdo é um MessageEmbed
         if (content instanceof MessageEmbed) {
-          toSend = content.toText();
+          try {
+            content.validate(); // Valida o embed
+            embedData = content.toJSON();
+            toSend = ''; // Embed não precisa de conteúdo de texto
+            messageType = 'embed';
+          } catch (error) {
+            return reject(new ClientError(`Invalid embed: ${error.message}`, "INVALID_EMBED"));
+          }
         }
 
+        // Se opts é um MessageAttachment (mantém compatibilidade)
         if (opts instanceof MessageAttachment) {
           const uploadedFile = await this.uploadFile(opts);
-
           if (uploadedFile) {
             const mimetype = opts.name.split('.').pop().toLowerCase();
-            const messageType = ['png', 'jpg', 'jpeg', 'gif', 'webp'].includes(mimetype)
+            const detectedType = ['png', 'jpg', 'jpeg', 'gif', 'webp'].includes(mimetype)
               ? 'image'
               : 'file';
-
             opts = {
               fileUrl: uploadedFile.url,
               fileName: uploadedFile.originalName,
               fileSize: uploadedFile.size,
-              messageType
+              messageType: detectedType
             };
+            messageType = detectedType;
           }
         }
 
+        // Se opts.file existe (upload de arquivo)
         if (opts.file) {
           const fileData = await this._handleFileUpload(opts.file, opts.fileName);
           opts.fileUrl = fileData.url;
           opts.fileName = fileData.originalName;
           opts.fileSize = fileData.size;
-          opts.messageType = opts.messageType || fileData.detectedType;
+          messageType = opts.messageType || fileData.detectedType;
         }
 
-        const timeout = setTimeout(() => {
-          reject(new ClientError("Message send timeout", "SEND_TIMEOUT"));
-        }, 15000);
+        // Se opts.embed existe (nova forma de enviar embed)
+        if (opts.embed) {
+          if (opts.embed instanceof MessageEmbed) {
+            try {
+              opts.embed.validate();
+              embedData = opts.embed.toJSON();
+              messageType = 'embed';
+            } catch (error) {
+              return reject(new ClientError(`Invalid embed: ${error.message}`, "INVALID_EMBED"));
+            }
+          } else if (typeof opts.embed === 'object') {
+            embedData = opts.embed;
+            messageType = 'embed';
+          }
+        }
+
+        // Sobrescreve messageType se fornecido explicitamente
+        if (opts.messageType && !embedData) {
+          messageType = opts.messageType;
+        }
 
         this.socket.emit(
           'message:send',
           {
             channelId,
             content: toSend,
-            messageType: opts.messageType || 'text',
+            messageType: messageType,
             replyTo: opts.replyTo || null,
             fileUrl: opts.fileUrl || null,
             fileName: opts.fileName || null,
             fileSize: opts.fileSize || null,
             stickerId: opts.stickerId || null,
+            embedData: embedData, // Nova propriedade
           },
           async (response) => {
-            clearTimeout(timeout);
-
             if (response && response.error) {
               reject(new ClientError(response.error, "SEND_ERROR"));
             } else {
@@ -503,7 +605,6 @@ class Client extends EventEmitter {
             }
           }
         );
-
       } catch (error) {
         reject(error instanceof ClientError ? error : new ClientError(error.message, "SEND_ERROR"));
       }
@@ -606,15 +707,15 @@ class Client extends EventEmitter {
         return reject(error);
       }
 
-      const timeout = setTimeout(() => {
-        reject(new ClientError("Message edit timeout", "EDIT_TIMEOUT"));
-      }, 15000);
+      // const timeout = setTimeout(() => {
+      //   reject(new ClientError("Message edit timeout", "EDIT_TIMEOUT"));
+      // }, 15000);
 
       this.socket.emit(
         'message:edit',
         { messageId, content: newContent },
         (response) => {
-          clearTimeout(timeout);
+          // clearTimeout(timeout);
 
           if (response && response.error) {
             reject(new ClientError(response.error, "EDIT_ERROR"));
@@ -638,9 +739,9 @@ class Client extends EventEmitter {
         return reject(error);
       }
 
-      const timeout = setTimeout(() => {
-        reject(new ClientError("Message delete timeout", "DELETE_TIMEOUT"));
-      }, 15000);
+      // const timeout = setTimeout(() => {
+      //   reject(new ClientError("Message delete timeout", "DELETE_TIMEOUT"));
+      // }, 15000);
 
       this.socket.emit('message:delete', { messageId }, (response) => {
         clearTimeout(timeout);
@@ -1057,6 +1158,8 @@ class Client extends EventEmitter {
     };
   }
 }
+
+Client.MessageEmbed = MessageEmbed;
 
 module.exports = Client;
 module.exports.ClientError = ClientError;
