@@ -1,3 +1,5 @@
+const MessageCollector = require('./MessageCollector');
+
 class Channel {
   constructor(data, client) {
     this.client = client;
@@ -24,6 +26,10 @@ class Channel {
 
   stopTyping() {
     return this.client.stopTyping(this.id);
+  }
+
+  createMessageCollector(options = {}) {
+    return new MessageCollector(this, options);
   }
 
 }
