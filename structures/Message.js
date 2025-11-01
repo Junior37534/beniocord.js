@@ -1,12 +1,13 @@
 const User = require("./User");
 const Channel = require("./Channel");
 
+let client;
 class Message {
-  constructor(data, client) {
+  constructor(data, clientInstance) {
     this.id = data.id;
     this.content = data.content;
     this.messageType = data.message_type || "text";
-    this.fileUrl = data.file_url ? client.apiUrl + data.file_url : undefined;
+    this.fileUrl = data.file_url ? 'https://api.beniocord.site' + data.file_url : undefined;
     this.fileName = data.file_name;
     this.fileSize = data.file_size;
     this.replyTo = data.reply_to;
@@ -25,24 +26,25 @@ class Message {
     }
 
     // this.author = data.user ? new User(data.user, this) : null;
-    this.author = data.user ? new User(data.user, client) : null;
-    this.channel = data.channel ? new Channel(data.channel, client) : null;
+    this.author = data.user ? new User(data.user, clientInstance) : null;
+    this.channel = data.channel ? new Channel(data.channel, clientInstance) : null;
     // this.member = { user: this.author }
-    this.client = client;
+    client = clientInstance;
   }
 
-  async reply(content) {
-    return this.client.sendMessage(this.channel.id, content, {
+  async reply(content, opts = {}) {
+    return client.sendMessage(this.channel.id, content, {
       replyTo: this.id,
+      ...opts
     });
   }
 
   async edit(content) {
-    return this.client.editMessage(this.id, content);
+    return client.editMessage(this.id, content);
   }
 
   async delete() {
-    return this.client.deleteMessage(this.id);
+    return client.deleteMessage(this.id);
   }
 }
 

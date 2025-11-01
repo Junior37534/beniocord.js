@@ -1,9 +1,9 @@
 class Emoji {
-    constructor(data, api_url) {
+    constructor(data) {
         this.id = data.id;
         this.userId = data.user_id;
         this.name = data.name;
-        this.url = data.url ? api_url + data.url : undefined;
+        this.url = data.url ? 'https://api.beniocord.site' + data.url : undefined;
         this.createdAt = data.created_at;
         this.updatedAt = data.updated_at;
     }
