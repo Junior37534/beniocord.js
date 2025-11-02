@@ -1,9 +1,11 @@
+const { formatUrl } = require("../helpers");
+
 class User {
   constructor(data, client) {
     this.id = data.id;
     this.username = data.username;
     this.displayName = data.display_name;
-    this.avatarUrl = data.avatar_url ? 'https://api.beniocord.site' + data.avatar_url : undefined;
+    this.avatarUrl = formatUrl(data.avatar_url);
     this.status = data.status || "offline";
     this.emblems = data.emblems || [];
     this.lastSeen = data.last_seen;

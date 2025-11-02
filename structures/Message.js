@@ -1,5 +1,6 @@
 const User = require("./User");
 const Channel = require("./Channel");
+const { formatUrl } = require('../helpers/index');
 
 let client;
 class Message {
@@ -7,7 +8,7 @@ class Message {
     this.id = data.id;
     this.content = data.content;
     this.messageType = data.message_type || "text";
-    this.fileUrl = data.file_url ? 'https://api.beniocord.site' + data.file_url : undefined;
+    this.fileUrl = formatUrl(data.file_url);
     this.fileName = data.file_name;
     this.fileSize = data.file_size;
     this.replyTo = data.reply_to;
