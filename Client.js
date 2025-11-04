@@ -83,6 +83,13 @@ class Client extends EventEmitter {
       response => response,
       error => this._handleAxiosError(error)
     );
+
+    setInterval(() => {
+      if (this._sentMessages.size > 1000) {
+        this._sentMessages.clear();
+      }
+    }, 30 * 60 * 1000);
+
   }
 
   _handleAxiosError(error) {
@@ -194,7 +201,7 @@ class Client extends EventEmitter {
         this.isConnected = true;
         this.retryCount = 0;
         this._setupSocketHandlers();
-        this._startHeartbeat(); // Inicia o heartbeat
+        this._startHeartbeat();
         resolve();
       });
 
@@ -241,7 +248,7 @@ class Client extends EventEmitter {
 
       this.socket.on("reconnect", (attemptNumber) => {
         this.isConnected = true;
-        this._startHeartbeat(); // Reinicia o heartbeat após reconexão
+        this._startHeartbeat();
         this.emit("reconnect", attemptNumber);
       });
 
@@ -302,22 +309,6 @@ class Client extends EventEmitter {
   }
 
   /**
-   * Define o status do bot (se o servidor suportar)
-   * @param {string} status - Status: "online", "away", "dnd", "offline"
-   */
-  setStatus(status) {
-    if (!["online", "away", "dnd", "offline"].includes(status)) {
-      throw new ClientError("Invalid status", "INVALID_STATUS");
-    }
-
-    this.status = status;
-
-    if (this.socket && this.isConnected) {
-      this.socket.emit("status:update", { status });
-    }
-  }
-
-  /**
    * Desconecta o cliente e limpa recursos
    */
   disconnect() {
@@ -334,15 +325,28 @@ class Client extends EventEmitter {
         });
       }
 
+      this._removeSocketHandlers();
+
+      this.socket.off("connect");
+      this.socket.off("disconnect");
+      this.socket.off("connect_error");
+      this.socket.off("reconnect");
+      this.socket.off("reconnect_error");
+      this.socket.off("reconnect_failed");
+
       this.socket.disconnect();
       this.socket = null;
     }
 
     this.isConnected = false;
+    this.isReady = false;
   }
 
+
   _setupSocketHandlers() {
-    this.socket.on("message:new", async (data) => {
+    this._removeSocketHandlers();
+
+    this.socket.on('message:new', async (data) => {
       try {
         if (this._sentMessages.has(data.id)) {
           this._sentMessages.delete(data.id);
@@ -398,6 +402,26 @@ class Client extends EventEmitter {
       data.member = member;
       data.channel = channel;
 
+      // 🔥 Se EU fui adicionado ao canal
+      if (data.memberId === this.user?.id) {
+        // Adiciona o canal na cache se não existir
+        if (channel && !this.cache.channels.has(data.channelId)) {
+          this.cache.channels.set(data.channelId, channel);
+        }
+
+        // Entra na room do canal no socket
+        this.socket.emit('channel:join', { channelId: data.channelId });
+      }
+
+      // 🔥 Se o canal já existe na cache, adiciona o membro nele
+      if (channel && member) {
+        // Assumindo que o Channel tem uma lista/Map de membros
+        if (!channel.members) {
+          channel.members = new Map();
+        }
+        channel.members.set(member.id, member);
+      }
+
       this.emit('memberJoin', data);
       console.log('join', data);
     });
@@ -412,6 +436,20 @@ class Client extends EventEmitter {
 
       data.member = member;
       data.channel = channel;
+
+      // 🔥 Se EU fui removido do canal
+      if (data.memberId === this.user?.id) {
+        // Remove o canal da cache
+        this.cache.channels.delete(data.channelId);
+
+        // Sai da room do canal no socket
+        this.socket.emit('channel:leave', { channelId: data.channelId });
+      }
+
+      // 🔥 Se o canal existe na cache, remove o membro dele
+      if (channel && member && channel.members) {
+        channel.members.delete(member.id);
+      }
 
       this.emit('memberLeave', data);
       console.log('leave', data);
@@ -430,6 +468,24 @@ class Client extends EventEmitter {
     this.socket.on('rate:limited', (data) => {
       this.emit('rateLimited', data);
     });
+  }
+
+  _removeSocketHandlers() {
+    if (!this.socket) return;
+
+    // Remove todos os listeners customizados
+    this.socket.off("message:new");
+    this.socket.off("message:deleted");
+    this.socket.off("message:edited");
+    this.socket.off("typing:user-start");
+    this.socket.off("typing:user-stop");
+    this.socket.off("user:status-update");
+    this.socket.off("presence:update");
+    this.socket.off("member:join");
+    this.socket.off("member:leave");
+    this.socket.off("channel:update");
+    this.socket.off("channel:delete");
+    this.socket.off("rate:limited");
   }
 
   async _processSocketMessage(data) {
@@ -533,7 +589,8 @@ class Client extends EventEmitter {
   }
 
   /**
-   * @param {string} status - online, offline, away, dnd
+   * Set the user status
+   * @param {string} status - Status: "online", "away", "dnd", "offline"
    */
   async setStatus(status) {
     const validStatuses = ["online", "offline", "away", "dnd"];
@@ -549,13 +606,7 @@ class Client extends EventEmitter {
     this.socket.emit('status:update', { status });
   }
 
-  /**
-   * Envia uma mensagem para um canal
-   * @param {string} channelId - ID do canal
-   * @param {string|MessageEmbed} content - Conteúdo da mensagem ou MessageEmbed
-   * @param {Object|MessageAttachment} opts - Opções adicionais
-   * @returns {Promise<Message>}
-   */
+
   // async sendMessage(channelId, content, opts = {}) {
   //   return new Promise(async (resolve, reject) => {
   //     try {
@@ -628,6 +679,15 @@ class Client extends EventEmitter {
   //     }
   //   });
   // }
+
+
+  /**
+   * Send a message
+   * @param {string} channelId - Channel ID
+   * @param {string|MessageEmbed} content - Message content or MessageEmbed
+   * @param {Object|MessageAttachment} opts - Extra options
+   * @returns {Promise<Message>}
+   */
   async sendMessage(channelId, content, opts = {}) {
     return new Promise(async (resolve, reject) => {
       try {
