@@ -164,6 +164,8 @@ class Client extends EventEmitter {
         );
       }
 
+      await this._joinAllChannelRooms();
+
       this.isReady = true;
       this.emit("ready", this.user);
 
@@ -264,6 +266,20 @@ class Client extends EventEmitter {
         ));
       });
     });
+  }
+
+  async _joinAllChannelRooms() {
+    try {
+      const channels = await this.fetchChannels();
+
+      for (const channel of channels) {
+        if (this.socket && this.socket.connected) {
+          this.socket.emit('channel:join', { channelId: channel.id });
+        }
+      }
+    } catch (error) {
+      console.error('Erro ao entrar nas rooms dos canais:', error);
+    }
   }
 
   /**
@@ -402,20 +418,17 @@ class Client extends EventEmitter {
       data.member = member;
       data.channel = channel;
 
-      // 🔥 Se EU fui adicionado ao canal
       if (data.memberId === this.user?.id) {
-        // Adiciona o canal na cache se não existir
         if (channel && !this.cache.channels.has(data.channelId)) {
           this.cache.channels.set(data.channelId, channel);
         }
 
-        // Entra na room do canal no socket
-        this.socket.emit('channel:join', { channelId: data.channelId });
+        if (this.socket && this.socket.connected) {
+          this.socket.emit('channel:join', { channelId: data.channelId });
+        }
       }
 
-      // 🔥 Se o canal já existe na cache, adiciona o membro nele
       if (channel && member) {
-        // Assumindo que o Channel tem uma lista/Map de membros
         if (!channel.members) {
           channel.members = new Map();
         }
@@ -423,7 +436,6 @@ class Client extends EventEmitter {
       }
 
       this.emit('memberJoin', data);
-      console.log('join', data);
     });
 
     this.socket.on('member:leave', async (data) => {
@@ -437,22 +449,18 @@ class Client extends EventEmitter {
       data.member = member;
       data.channel = channel;
 
-      // 🔥 Se EU fui removido do canal
       if (data.memberId === this.user?.id) {
-        // Remove o canal da cache
         this.cache.channels.delete(data.channelId);
-
-        // Sai da room do canal no socket
-        this.socket.emit('channel:leave', { channelId: data.channelId });
+        if (this.socket && this.socket.connected) {
+          this.socket.emit('channel:leave', { channelId: data.channelId });
+        }
       }
 
-      // 🔥 Se o canal existe na cache, remove o membro dele
       if (channel && member && channel.members) {
         channel.members.delete(member.id);
       }
 
       this.emit('memberLeave', data);
-      console.log('leave', data);
     });
 
     this.socket.on('channel:update', (data) => {
