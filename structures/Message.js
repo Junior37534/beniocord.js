@@ -16,10 +16,10 @@ class Message {
     this.createdAt = data.created_at;
     this.stickerId = data.sticker_id;
 
-    this.attachments = new Map();
+    this.attachments = [];
 
     if (data.file_url) {
-      this.attachments.set(this.fileUrl, {
+      this.attachments.push({
         url: this.fileUrl,
         name: this.fileName,
         size: this.fileSize,
