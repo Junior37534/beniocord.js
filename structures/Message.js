@@ -11,12 +11,11 @@ class Message {
     this.fileUrl = formatUrl(data.file_url);
     this.fileName = data.file_name;
     this.fileSize = data.file_size;
+    this.attachments = [];
     this.replyTo = data.reply_to;
+    this.stickerId = data.sticker_id;
     this.editedAt = data.edited_at;
     this.createdAt = data.created_at;
-    this.stickerId = data.sticker_id;
-
-    this.attachments = [];
 
     if (data.file_url) {
       this.attachments.push({

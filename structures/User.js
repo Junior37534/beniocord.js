@@ -8,9 +8,9 @@ class User {
     this.avatarUrl = formatUrl(data.avatar_url);
     this.status = data.status || "offline";
     this.emblems = data.emblems || [];
+    this.isBot = data.is_bot;
     this.lastSeen = data.last_seen;
     this.createdAt = data.created_at;
-    this.isBot = data.is_bot;
     // this.email = data.email;
     // this.updatedAt = data.updated_at;
   }
