@@ -80,6 +80,7 @@ class Client extends EventEmitter {
     this.isConnected = false;
     this.isReady = false;
     this.status = 'online';
+    this.version = require('./package.json').version;
 
     // Configuration options
     this.config = {
@@ -193,7 +194,8 @@ class Client extends EventEmitter {
   }
 
   /**
-   * Disconnects the bot from the server
+   * Kills the connection to the server
+   * @returns {void}
    */
   disconnect() {
     this._stopHeartbeat();
@@ -232,10 +234,14 @@ class Client extends EventEmitter {
   /**
    * Sets the bot's status
    * @param {string} status - Status: "online", "away", "dnd", "offline"
+   * @returns {Promise<Object>}
+   * @example
+   * client.setStatus("dnd").then((data) => {
+   *  console.log("Status updated:", data);
+   * });
    */
   async setStatus(status) {
     const validStatuses = ["online", "offline", "away", "dnd"];
-
     if (!validStatuses.includes(status)) {
       throw new ClientError(
         `Invalid status. Valid statuses are: ${validStatuses.join(", ")}`,
@@ -245,7 +251,14 @@ class Client extends EventEmitter {
 
     this._ensureConnected();
     this.status = status;
-    this.socket.emit('status:update', { status });
+
+    return new Promise((resolve) => {
+      this.socket.once('user:status-update', (data) => {
+        resolve(data);
+      });
+
+      this.socket.emit('status:update', { status });
+    });
   }
 
   /**
@@ -443,7 +456,7 @@ class Client extends EventEmitter {
    * Adds a member to a channel
    * @param {string} channelId - Channel ID
    * @param {string} userId - User ID to add
-   * @param {string} role - Member role (default: 'member')
+   * @param {string} [role] - Member role (default: 'member')
    * @returns {Promise<Object>} Response data
    */
   async addChannelMember(channelId, userId, role = 'member') {
@@ -739,7 +752,6 @@ class Client extends EventEmitter {
     }
   }
 
-
   // ============================================================================
   // PUBLIC API METHODS - Typing Indicators
   // ============================================================================
@@ -747,6 +759,7 @@ class Client extends EventEmitter {
   /**
    * Starts typing indicator in a channel
    * @param {string} channelId - Channel ID
+   * @returns {void}
    */
   startTyping(channelId) {
     try {
@@ -760,6 +773,7 @@ class Client extends EventEmitter {
   /**
    * Stops typing indicator in a channel
    * @param {string} channelId - Channel ID
+   * @returns {void}
    */
   stopTyping(channelId) {
     try {
@@ -906,6 +920,7 @@ class Client extends EventEmitter {
 
   /**
    * Clears all cached data
+   * @returns {void}
    */
   clearCache() {
     this.cache.users.clear();
@@ -1042,8 +1057,6 @@ class Client extends EventEmitter {
 
     /**
      * @event Client#messageCreate
-     * @example 
-     * tese
      */
     this.socket.on('message:new', async (data) => {
       try {
@@ -1510,15 +1523,15 @@ class Client extends EventEmitter {
 
   /**
    * Attaches an event listener.
-   * @internal
+   * @superInternal
    * @template {keyof ClientEvents} K
    * @param {K} event The event name.
    * @param {(arg: ClientEvents[K]) => void} listener
+   * @returns {this}
    */
   on(event, listener) {
     return super.on(event, listener);
   }
-
 
   /**
    * Emits an event with typed arguments.
@@ -1526,6 +1539,7 @@ class Client extends EventEmitter {
    * @template {keyof ClientEvents} K
    * @param {K} event
    * @param {ClientEvents[K]} payload
+   * @returns {this}
    */
   emit(event, payload) {
     return super.emit(event, payload);

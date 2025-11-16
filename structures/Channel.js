@@ -25,6 +25,7 @@ class Channel {
    * @param {import('./Client')} clientInstance - The client instance.
    * @returns {Channel} The created Channel instance.
    * @example
+   * // msg.channel
    * Channel {
    *   id: 2,
    *   name: 'Privado',

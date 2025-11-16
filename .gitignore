@@ -1,11 +1,8 @@
-<<<<<<< HEAD
 bots/
-=======
-bot/
 beniomusic/
 ajuda24h/
->>>>>>> 3e8a67a1a2fc8959aa9605dd7dce97efd71d148f
 node_modules/
 docgen/
 package-lock.json
+.npmignore
 .env

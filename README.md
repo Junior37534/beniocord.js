@@ -1,29 +1,54 @@
-# Beniocord.js
+# Getting Started
 
-**Beniocord.js** is a Node.js library for creating bots easily, with basic moderation features, automatic responses, and event handling.
+## Introduction <span style="font-size:0.8em;">Intro</span>
 
-> ⚠️ This is an early version — meant to give you a starting point for building your bot.
+### Beniocord.js
+
+A powerful JavaScript library for building Beniocord bots with ease.
+
+[![npm version](https://img.shields.io/npm/v/beniocord.js?color=crimson&logo=npm&style=flat-square)](https://www.npmjs.com/package/beniocord.js)
+[![npm downloads](https://img.shields.io/npm/dt/beniocord.js?color=crimson&logo=npm&style=flat-square)](https://www.npmjs.com/package/beniocord.js)
+[![GitHub stars](https://img.shields.io/github/stars/Junior37534/beniocord.js?color=yellow&logo=github&style=flat-square)](https://github.com/Junior37534/beniocord.js)
+[![GitHub issues](https://img.shields.io/github/issues/Junior37534/beniocord.js?color=green&logo=github&style=flat-square)](https://github.com/Junior37534/beniocord.js/issues)
+[![Join Beniocord](https://img.shields.io/badge/Join-Beniocord-5865F2?style=flat-square&logoColor=white)](https://beniocord.site/register)
+
+---
+
+### About
+
+Beniocord.js is a powerful Node.js module that allows you to easily interact with the Beniocord API. It provides an intuitive and modern approach to bot development.
+
+### Features
+
+- 🚀 Easy to use and beginner-friendly
+- ⚡ Fast and efficient
+- 📦 Object-oriented design
+- 🔄 Promise-based architecture
+- 🎯 Full Beniocord API coverage
+- 💪 TypeScript support
+
+### Requirements
+
+- Node.js >= 18
+- NPM >= 9
 
 ---
 
 ## Installation
 
+Install via NPM:
+
 ```bash
 npm install beniocord.js
-```
-
-> Make sure you have Node.js >= 18 installed.
+````
 
 ---
 
-## Basic Example
+## Quick Example
 
 ```js
-const Client = require("beniocord.js");
-const { MessageEmbed } = Client;
-require('dotenv').config();
-
-const client = new Client({ token: process.env.BOT_TOKEN });
+const Beniocord = require("beniocord.js");
+const client = new Beniocord({ token: 'YOUR_BOT_TOKEN' });
 
 client.on("ready", () => {
   console.log("🤖 Bot connected!");
@@ -31,20 +56,21 @@ client.on("ready", () => {
 
 client.on("messageCreate", async (msg) => {
   if (msg.author?.id === client.user?.id) return;
-  if (!msg.content) return;
+  if (!msg.content.startsWith('!')) return;
 
-  if (msg.content.toLowerCase() === "!ping") {
-    await client.sendMessage(msg.channel.id, "🏓 Pong!");
-  }
-  
-  if (msg.content.toLowerCase() === "!embed") {
-    const embed = new MessageEmbed()
-      .setTitle("Hello from Beniocord!")
-      .setDescription("This is an example embed")
-      .setColor("#147bba")
-      .setFooter(msg.author.displayName, msg.author.avatarURL());
-    
-    await msg.reply(embed);
+  const comando = msg.content.slice('!'.length).split(' ')[0];
+  const args = msg.content.slice(comando.length + '!'.length + 1).trim().split(' ');
+
+  if (comando === "ping") {
+    const msgTimestamp = Date.now() - Date.parse(msg.createdAt);
+    const sent = await msg.channel.send("🏓 Pinging...");
+    const editTimestamp = Date.now() - Date.parse(sent.createdAt);
+
+    await sent.edit(
+        `🏓 **Pong!**\n` +
+        `📨 **Message → Bot:** ${msgTimestamp}ms\n` +
+        `✏️ **Send → Edit:** ${editTimestamp}ms`
+    );
   }
 });
 
@@ -53,24 +79,8 @@ client.login();
 
 ---
 
-## Features
+## Useful Links
 
-* **Basic events**: `messageCreate`, `messageEdit`, `messageDelete`, `memberJoin`, `memberLeave`, `presenceUpdate`, `channelUpdate`, and more.
-* **Basic moderation**: delete messages, edit messages, etc.
-* **Embeds support**: create rich messages with `MessageEmbed`.
-* **Event-driven**: easy to handle events in real-time.
-
----
-
-## Events
-
-```js
-client.on("messageCreate", msg => {...});
-client.on("memberJoin", data => {...});
-client.on("channelUpdate", data => {...});
-// and many more...
-```
-
-You can add custom events and interact with your bot in real-time.
-
----
+* [Official Website](https://beniocord.site)
+* [Documentation](https://docs.beniocord.site)
+* [Join Beniocord](https://beniocord.site/register)
