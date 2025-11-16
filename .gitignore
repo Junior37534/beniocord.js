@@ -2,5 +2,6 @@ bot/
 beniomusic/
 ajuda24h/
 node_modules/
+docgen/
 package-lock.json
 .env
