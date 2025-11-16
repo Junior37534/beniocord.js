@@ -1,0 +1,5 @@
+bots/
+node_modules/
+docgen/
+package-lock.json
+.env

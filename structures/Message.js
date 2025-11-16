@@ -5,7 +5,7 @@ const { formatUrl } = require('../helpers/index');
 let client;
 
 /**
- * Represents a message in a channel.
+ * @internal
  */
 class Message {
   /**
@@ -23,11 +23,48 @@ class Message {
    * @param {string|number} [data.sticker_id] - ID of a sticker attached to the message.
    * @param {string|number|Date} [data.edited_at] - Timestamp when the message was edited.
    * @param {string|number|Date} [data.created_at] - Timestamp when the message was created.
-   * @param {Object} clientInstance - The client instance to send/edit/delete messages.
+   * @param {Object} clientInstance - The client instance.
+   * @returns {Message} The created Message instance.
    * @example
-   * // Creating a message instance
-   * const msg = new Message({ id: 1, content: "Hello!" }, client);
-   * 
+   * Message {
+   *   id: 20711,
+   *   content: 'Hello World!',
+   *   messageType: 'text',
+   *   fileUrl: null,
+   *   fileName: null,
+   *   fileSize: null,
+   *   attachments: [],
+   *   replyTo: 20709,
+   *   stickerId: null,
+   *   editedAt: null,
+   *   createdAt: '2025-11-16T14:29:40.598Z',
+   *   author: User {
+   *     id: 1,
+   *     username: 'junior9244',
+   *     displayName: 'Junior',
+   *     avatarUrl: 'https://api.beniocord.site/uploads/avatars/1760736025811-629632107.png',
+   *     status: 'online',
+   *     emblems: [],
+   *     isBot: false,
+   *     lastSeen: '2025-11-16T14:29:40.598Z',
+   *     createdAt: '2025-11-16T14:29:40.598Z'
+   *   },
+   *   channel: Channel {
+   *     id: 2,
+   *     name: 'Privado',
+   *     description: 'DM Privada para conversar secretas!\n',
+   *     type: 'text',
+   *     iconUrl: 'https://api.beniocord.site/uploads/1762899895145-938680330.gif',
+   *     ownerId: 1,
+   *     isPrivate: true,
+   *     isLocked: false,
+   *     memberCount: 8,
+   *     createdAt: '2025-09-21T15:28:43.610Z',
+   *     updatedAt: '2025-11-11T23:49:54.906Z',
+   *     members: Collection(0) [Map] { fetch: [AsyncFunction (anonymous)] },
+   *     messages: Collection(0) [Map] { fetch: [AsyncFunction (anonymous)] }
+   *   }
+   * }
    */
   constructor(data, clientInstance) {
     this.id = data.id;

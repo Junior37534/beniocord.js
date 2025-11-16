@@ -562,10 +562,21 @@ MessageEmbed.Colors = {
 };
 
 /**
- * MessageAttachment - Para anexos
  * @class
  */
 class MessageAttachment {
+    /**
+     * Creates a new MessageAttachment instance.
+     *
+     * @param {Buffer|Uint8Array|string} buffer - The data of the attachment. Can be a Buffer, Uint8Array, or base64 string.
+     * @param {string} name - The name of the attachment file (e.g., "image.png").
+     *
+     * @throws {Error} If the buffer is not provided.
+     * @throws {Error} If the name is not a valid string.
+     *
+     * @example
+     * const attachment = new MessageAttachment(fileBuffer, "photo.png");
+     */
     constructor(buffer, name) {
         if (!buffer) {
             throw new Error('Attachment buffer is required');

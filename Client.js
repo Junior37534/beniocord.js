@@ -10,6 +10,7 @@ const User = require("./structures/User");
 const Channel = require("./structures/Channel");
 const Emoji = require("./structures/Emoji");
 const { MessageEmbed, MessageAttachment } = require("./structures/Util");
+const { formatUrl } = require("./helpers");
 
 let global = {
   token: "",
@@ -18,6 +19,23 @@ let global = {
 
 class Client extends EventEmitter {
   /**
+   * @typedef {Object} ClientEvents
+   * @property {User} ready - Fired when the client finishes connecting
+   * @property {Message} messageCreate - Fired when a new message is created
+   * @property {Message} messageUpdate - Fired when a message is updated
+   * @property {Message} messageDelete - Fired when a message is deleted
+   * @property {Channel} channelCreate - Fired when a new channel is created
+   * @property {Channel} channelDelete - Fired when a channel is deleted
+   * @property {Channel} channelUpdate - Fired when a channel is updated
+   * @property {{channel: Channel, member: User}} channelMemberAdd - Fired when a member joins a channel
+   * @property {{channel: Channel, member: User}} channelMemberRemove - Fired when a member leaves a channel
+   * @property {User} channelMemberUpdate - Fired when a member updates their info in a channel
+   * @property {Emoji} emojiCreate - Fired when a new emoji is created
+   * @property {Emoji} emojiDelete - Fired when an emoji is deleted
+   * @property {Error} error - Fired when an error occurs
+   * @property {void} disconnect - Fired when disconnected from the gateway
+   * @property {void} reconnect - Fired when reconnecting to the gateway
+   * 
    * @fires Client#ready
    * @fires Client#messageCreate
    * @fires Client#messageDelete
@@ -38,12 +56,13 @@ class Client extends EventEmitter {
    * @fires Client#typingStart
    * @fires Client#typingStop
    * @class Client
-   * @description Classe principal do BenioCord.js - Gerencia a comunicação com a API e eventos do bot
+   * @description The main class of BenioCord.js, responsible for managing API communication and bot events.
    * @param {Object} options - Opções de configuração do cliente
    * @param {string} options.token - Token do bot para autenticação
    * @example
-   * const { Client } = require('beniocord.js');
-   * const client = new Client({ token: 'YOUR_BOT_TOKEN' });
+   * const Beniocord = require('beniocord.js');
+   * const client = new Beniocord({ token: 'YOUR_BOT_TOKEN' });
+   * client.login();
    */
   constructor({ token }) {
     super();
@@ -680,11 +699,46 @@ class Client extends EventEmitter {
   async fetchMessage(channelId, messageId) {
     try {
       const res = await this._axios.get(`/api/channels/${channelId}/messages/${messageId}`);
-      return new Message(res.data, this);
+      const raw = res.data;
+
+      // --- USER ---
+      const userData = {
+        id: raw.user_id,
+        username: raw.username,
+        display_name: raw.display_name,
+        avatar_url: raw.avatar_url,
+        status: raw.status || 'online',
+        emblems: raw.emblems || [],
+        is_bot: raw.is_bot ?? false,
+        last_seen: raw.last_seen ?? raw.created_at,
+        created_at: raw.created_at,
+      };
+      const messageData = { ...raw, user: userData };
+
+      // Cria a mensagem
+      const message = new Message(messageData, this);
+
+      // Cache do author
+      if (message.author) this.cache.users.set(message.author.id, message.author);
+
+      // --- CHANNEL ---
+      if (!message.channel && raw.channel_id) {
+        // Tenta pegar da cache
+        let channel = this.cache.channels.get(raw.channel_id);
+        if (!channel) {
+          channel = await this.fetchChannel(raw.channel_id);
+        }
+        message.channel = channel;
+      }
+
+      return message;
     } catch (error) {
-      throw error instanceof ClientError ? error : new ClientError(error.message, "FETCH_MESSAGE_ERROR");
+      throw error instanceof ClientError
+        ? error
+        : new ClientError(error.message, "FETCH_MESSAGE_ERROR");
     }
   }
+
 
   // ============================================================================
   // PUBLIC API METHODS - Typing Indicators
@@ -746,13 +800,12 @@ class Client extends EventEmitter {
   /**
    * Fetches all available emojis
    * @param {Object} options - Fetch options
-   * @param {boolean} options.includeOthers - Include emojis from other users
    * @param {string} options.search - Search query
    * @returns {Promise<Emoji[]>} Array of emoji objects
    */
   async fetchAllEmojis(options = {}) {
     try {
-      const endpoint = options.includeOthers ? '/api/emojis/all' : '/api/emojis';
+      const endpoint = '/api/emojis/all';
       const params = {};
 
       if (options.search) {
@@ -760,7 +813,9 @@ class Client extends EventEmitter {
       }
 
       const res = await this._axios.get(endpoint, { params });
+
       const emojis = res.data.map(e => {
+        if (!e.user_id) e.user_id = this.user.id;
         const emoji = new Emoji(e);
         this.cache.emojis.set(emoji.id, emoji);
         return emoji;
@@ -768,7 +823,9 @@ class Client extends EventEmitter {
 
       return emojis;
     } catch (error) {
-      throw error instanceof ClientError ? error : new ClientError(error.message, "FETCH_EMOJIS_ERROR");
+      throw error instanceof ClientError
+        ? error
+        : new ClientError(error.message, "FETCH_EMOJIS_ERROR");
     }
   }
 
@@ -945,7 +1002,7 @@ class Client extends EventEmitter {
       });
 
       this.socket.on("reconnect_error", (error) => {
-        this.emit("reconnectError", error);
+        this.emit("error", error);
       });
 
       this.socket.on("reconnect_failed", () => {
@@ -985,6 +1042,8 @@ class Client extends EventEmitter {
 
     /**
      * @event Client#messageCreate
+     * @example 
+     * tese
      */
     this.socket.on('message:new', async (data) => {
       try {
@@ -1231,12 +1290,21 @@ class Client extends EventEmitter {
     const msg = new Message(data, this);
 
     if (!msg.author && data.user_id) {
-      msg.author = new User({
-        id: data.user_id,
-        username: data.username,
-        display_name: data.display_name,
-        avatar_url: data.avatar_url
-      }, this);
+      const cachedUser = this.cache.users.get(data.user_id);
+      if (cachedUser) {
+        cachedUser.username = data.username || cachedUser.username;
+        cachedUser.displayName = data.display_name || cachedUser.displayName;
+        cachedUser.avatarUrl = formatUrl(data.avatar_url) || cachedUser.avatarUrl;
+        msg.author = cachedUser;
+      } else {
+        msg.author = new User({
+          id: data.user_id,
+          username: data.username,
+          display_name: data.display_name,
+          avatar_url: data.avatar_url,
+        }, this);
+        this.cache.users.set(msg.author.id, msg.author);
+      }
     }
 
     if (!msg.channel && data.channel_id) {
@@ -1435,11 +1503,40 @@ class Client extends EventEmitter {
       throw new ClientError(`File upload error: ${error.message}`, 'UPLOAD_FAILED');
     }
   }
+
+  // ============================================================================
+  // EVENT EMITTER OVERRIDES
+  // ============================================================================
+
+  /**
+   * Attaches an event listener.
+   * @internal
+   * @template {keyof ClientEvents} K
+   * @param {K} event The event name.
+   * @param {(arg: ClientEvents[K]) => void} listener
+   */
+  on(event, listener) {
+    return super.on(event, listener);
+  }
+
+
+  /**
+   * Emits an event with typed arguments.
+   * @internal
+   * @template {keyof ClientEvents} K
+   * @param {K} event
+   * @param {ClientEvents[K]} payload
+   */
+  emit(event, payload) {
+    return super.emit(event, payload);
+  }
 }
 
+/**
+ * @internal
+ */
 class ClientError extends Error {
   /**
-   * @private
    * @param {string} message - Error message
    * @param {string} code - Error code
   */
