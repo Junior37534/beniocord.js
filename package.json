@@ -5,7 +5,7 @@
     "socket.io-client": "^4.8.1"
   },
   "name": "beniocord.js",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "description": "Uma biblioteca leve e intuitiva para integração com APIs de bots em plataformas de mensagens, como Discord. Facilita o envio de mensagens, gerenciamento de canais e interação com usuários, proporcionando uma experiência de desenvolvimento ágil e eficiente.",
   "main": "Client.js",
   "scripts": {
