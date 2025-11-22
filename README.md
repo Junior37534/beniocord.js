@@ -11,6 +11,7 @@ A powerful JavaScript library for building Beniocord bots with ease.
 [![GitHub stars](https://img.shields.io/github/stars/Junior37534/beniocord.js?color=yellow&logo=github&style=flat-square)](https://github.com/Junior37534/beniocord.js)
 [![GitHub issues](https://img.shields.io/github/issues/Junior37534/beniocord.js?color=green&logo=github&style=flat-square)](https://github.com/Junior37534/beniocord.js/issues)
 [![Join Beniocord](https://img.shields.io/badge/Join-Beniocord-5865F2?style=flat-square&logoColor=white)](https://beniocord.site/register)
+[![Better Stack Badge](https://uptime.betterstack.com/status-badges/v2/monitor/284m0.svg)](https://uptime.betterstack.com/?utm_source=status_badge)
 
 ---
 

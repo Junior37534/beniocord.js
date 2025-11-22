@@ -9,6 +9,8 @@ const Message = require("./structures/Message");
 const User = require("./structures/User");
 const Channel = require("./structures/Channel");
 const Emoji = require("./structures/Emoji");
+const Sticker = require("./structures/Sticker");
+
 const { MessageEmbed, MessageAttachment } = require("./structures/Util");
 const { formatUrl } = require("./helpers");
 
@@ -57,8 +59,8 @@ class Client extends EventEmitter {
    * @fires Client#typingStop
    * @class Client
    * @description The main class of BenioCord.js, responsible for managing API communication and bot events.
-   * @param {Object} options - Opções de configuração do cliente
-   * @param {string} options.token - Token do bot para autenticação
+   * @param {Object} options - Client configuration options
+   * @param {string} options.token - Bot token used for authentication
    * @example
    * const Beniocord = require('beniocord.js');
    * const client = new Beniocord({ token: 'YOUR_BOT_TOKEN' });
@@ -616,30 +618,26 @@ class Client extends EventEmitter {
    * Edits a message
    * @param {string} messageId - Message ID
    * @param {string} newContent - New message content
-   * @returns {Promise<Object>} Response data
+   * @returns {Promise<Message>} Response data
    */
   async editMessage(messageId, newContent) {
     return new Promise((resolve, reject) => {
-      try {
-        this._ensureConnected();
-      } catch (error) {
-        return reject(error);
-      }
-
       this.socket.emit(
         'message:edit',
         { messageId, content: newContent },
-        (response) => {
+        async (response) => {
           if (response && response.error) {
             reject(new ClientError(response.error, "EDIT_ERROR"));
           } else {
             this._updateMessageContent(messageId, newContent, new Date().toISOString());
-            resolve(response);
+            const msg = await this._processSocketMessage(response); // transforma response em Message
+            resolve(msg);
           }
         }
       );
     });
   }
+
 
   /**
    * Deletes a message
@@ -727,11 +725,7 @@ class Client extends EventEmitter {
         created_at: raw.created_at,
       };
       const messageData = { ...raw, user: userData };
-
-      // Cria a mensagem
       const message = new Message(messageData, this);
-
-      // Cache do author
       if (message.author) this.cache.users.set(message.author.id, message.author);
 
       // --- CHANNEL ---
@@ -742,6 +736,21 @@ class Client extends EventEmitter {
           channel = await this.fetchChannel(raw.channel_id);
         }
         message.channel = channel;
+      }
+
+      // --- STICKER ---
+      if (!message.sticker && raw.sticker_id) {
+        let sticker = this.cache.stickers.get(raw.sticker_id);
+
+        if (!sticker) {
+          try {
+            sticker = await this.fetchSticker(raw.sticker_id);
+          } catch (_) {
+            sticker = null;
+          }
+        }
+
+        message.sticker = sticker;
       }
 
       return message;
@@ -856,8 +865,9 @@ class Client extends EventEmitter {
 
     try {
       const res = await this._axios.get(`/api/stickers/${id}`);
-      this.cache.stickers.set(res.data.id, res.data);
-      return res.data;
+      const sticker = new Sticker(res.data);
+      this.cache.stickers.set(sticker.id, sticker);
+      return sticker;
     } catch (error) {
       throw error instanceof ClientError
         ? error
@@ -1085,10 +1095,27 @@ class Client extends EventEmitter {
     /**
      * @event Client#messageEdit
      */
-    this.socket.on('message:edited', (data) => {
-      const { messageId, content, editedAt } = data;
-      this._updateMessageContent(messageId, content, editedAt);
-      this.emit('messageEdit', data);
+    this.socket.on('message:edited', async (data) => {
+      const { messageId: id, content, editedAt } = data;
+
+      let msg;
+      for (const [channelId, messages] of this.cache.channels) {
+        const channel = messages;
+        if (channel.messages.has(id)) {
+          msg = channel.messages.get(id);
+          msg.content = content;
+          msg.editedAt = editedAt;
+          msg.edited = true;
+          break;
+        }
+      }
+
+      if (!msg) {
+        msg = await this._processSocketMessage(data);
+        this._cacheMessage(msg);
+      }
+
+      this.emit('messageEdit', msg);
     });
 
     /**
@@ -1328,6 +1355,15 @@ class Client extends EventEmitter {
       await msg.channel.members.fetch();
     }
 
+    if (!msg.sticker && data.sticker_id) {
+      let sticker = this.cache.stickers.get(data.sticker_id);
+
+      if (!sticker) {
+        sticker = await this.fetchSticker(data.sticker_id).catch(() => null);
+      }
+
+      msg.sticker = sticker;
+    }
     return msg;
   }
 
@@ -1344,10 +1380,8 @@ class Client extends EventEmitter {
       const channel = msg.channel;
       this._ensureCached(this.cache.channels, channel.id, channel);
 
-      // guarda a mensagem no canal
       channel.messages.set(msg.id, msg);
 
-      // limita a 50 mensagens
       if (channel.messages.size > 50) {
         const firstKey = channel.messages.firstKey(); // método do Collection
         channel.messages.delete(firstKey);

@@ -20,7 +20,7 @@ class Message {
    * @param {Object} [data.user] - Author user data.
    * @param {Object} [data.channel] - Channel data where the message was sent.
    * @param {string|number} [data.reply_to] - ID of the message this is replying to.
-   * @param {string|number} [data.sticker_id] - ID of a sticker attached to the message.
+   * @param {Object} [data.sticker] - Sticker object attached to the message.
    * @param {string|number|Date} [data.edited_at] - Timestamp when the message was edited.
    * @param {string|number|Date} [data.created_at] - Timestamp when the message was created.
    * @param {Object} clientInstance - The client instance.
@@ -35,9 +35,16 @@ class Message {
    *   fileSize: null,
    *   attachments: [],
    *   replyTo: 20709,
-   *   stickerId: null,
    *   editedAt: null,
    *   createdAt: '2025-11-16T14:29:40.598Z',
+   *   sticker: {
+   *     id: 1,
+   *     name: 'carrin',
+   *     url: '/uploads/stickers/1758986081574-510376341.gif',
+   *     tags: [],
+   *     user_id: 2,
+   *     owner: 'kkauabr'
+   *   },
    *   author: User {
    *     id: 1,
    *     username: 'junior9244',
@@ -75,9 +82,10 @@ class Message {
     this.fileSize = data.file_size;
     this.attachments = [];
     this.replyTo = data.reply_to;
-    this.stickerId = data.sticker_id;
     this.editedAt = data.edited_at;
     this.createdAt = data.created_at;
+
+    this.sticker = null;
 
     if (data.file_url) {
       this.attachments.push({
