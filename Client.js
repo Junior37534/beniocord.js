@@ -12,7 +12,7 @@ const Emoji = require("./structures/Emoji");
 const Sticker = require("./structures/Sticker");
 
 const { MessageEmbed, MessageAttachment } = require("./structures/Util");
-const { formatUrl } = require("./helpers");
+const { formatUrl, stripDomain } = require("./helpers");
 
 let global = {
   token: "",
@@ -61,20 +61,23 @@ class Client extends EventEmitter {
    * @description The main class of BenioCord.js, responsible for managing API communication and bot events.
    * @param {Object} options - Client configuration options
    * @param {string} options.token - Bot token used for authentication
+   * @param {string} options.api_url - Override default API URL
    * @example
    * const Beniocord = require('beniocord.js');
    * const client = new Beniocord({ token: 'YOUR_BOT_TOKEN' });
    * client.login();
    */
-  constructor({ token }) {
+  constructor({ token, api_url } = {}) {
     super();
+
+    const API_URL = api_url ?? global.apiUrl;
 
     if (!token || typeof token !== 'string' || token.trim() === '') {
       throw new ClientError("Valid token is required", "INVALID_TOKEN");
     }
 
-    // Global configuration
     global.token = token.trim();
+    global.apiUrl = API_URL;
 
     // Client state
     this.socket = null;
@@ -86,9 +89,9 @@ class Client extends EventEmitter {
 
     // Configuration options
     this.config = {
-      connectionTimeout: 15000,
-      requestTimeout: 10000,
-      maxRetries: 3,
+      connectionTimeout: 999999,
+      requestTimeout: 999999,
+      maxRetries: 9999,
       reconnectionDelay: 1000,
     };
 
@@ -635,6 +638,36 @@ class Client extends EventEmitter {
           }
         }
       );
+    });
+  }
+
+  /**
+ * Sends a sticker to a channel.
+ * Prioriza o cache. Se não tiver, faz fetch.
+ * @param {string|number} channelId
+ * @param {string|number} stickerId
+ * @returns {Promise<Message>}
+ */
+  async sendSticker(channelId, stickerId) {
+    let sticker = this.cache.stickers.get(stickerId);
+
+    if (!sticker) {
+      sticker = await this.fetchSticker(stickerId);
+    }
+
+    if (!sticker) {
+      throw new ClientError(`Sticker ${stickerId} not found`, "INVALID_STICKER");
+    }
+
+    const stickerPath = sticker.url;
+    if (!stickerPath) {
+      throw new ClientError(`Sticker ${stickerId} is missing 'url'`, "INVALID_STICKER_PATH");
+    }
+
+    return this.sendMessage(channelId, "", {
+      messageType: "sticker",
+      stickerId,
+      url: stripDomain(stickerPath),
     });
   }
 
@@ -1351,7 +1384,7 @@ class Client extends EventEmitter {
       msg.channel = await this.fetchChannel(data.channel_id);
     }
 
-    if (msg.channel.memberCount !== msg.channel.members.size) {
+    if (msg.channel?.memberCount !== msg.channel?.members?.size) {
       await msg.channel.members.fetch();
     }
 
@@ -1580,6 +1613,8 @@ class Client extends EventEmitter {
   }
 }
 
+const { parseErrors } = require("./helpers");
+
 /**
  * @internal
  */
@@ -1589,7 +1624,10 @@ class ClientError extends Error {
    * @param {string} code - Error code
   */
   constructor(message, code) {
-    super(message);
+    const parsed = typeof parseErrors === 'function'
+      ? (code ? parseErrors(code) : parseErrors(message))
+      : null;
+    super(parsed || message);
     this.name = 'ClientError';
     this.code = code;
   }

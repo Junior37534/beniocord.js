@@ -12,6 +12,7 @@ class User {
    * @param {string} data.username - The username of the user.
    * @param {string} data.display_name - The display name of the user.
    * @param {string} data.avatar_url - The URL of the user's avatar.
+   * @param {string|null} [data.banner_url] - The URL of the user's banner (optional).
    * @param {string} [data.status='offline'] - The user's status.
    * @param {Array<Object>} [data.emblems=[]] - Array of user emblems.
    * @param {boolean} data.is_bot - Whether the user is a bot.
@@ -25,6 +26,7 @@ class User {
    *   username: 'junior9244',
    *   displayName: 'Junior',
    *   avatarUrl: 'https://api.beniocord.site/uploads/avatars/1760736025811-629632107.png',
+   *   bannerUrl: 'https://api.beniocord.site/uploads/banners/1760736025811-629632107.png',
    *   status: 'online',
    *   emblems: [ [Object], [Object] ],
    *   isBot: false,
@@ -39,11 +41,16 @@ class User {
     this.username = data.username;
     this.displayName = data.display_name;
     this.avatarUrl = formatUrl(data.avatar_url);
+    /**
+     * The URL of the user's banner (or null if not set).
+     * @type {string|null}
+     */
+    this.bannerUrl = data.banner_url ? formatUrl(data.banner_url) : null;
     this.status = data.status || "offline";
     this.emblems = data.emblems || [];
-    this.isBot = data.is_bot;
-    this.lastSeen = data.last_seen;
-    this.createdAt = data.created_at;
+    this.isBot = typeof data.is_bot !== 'undefined' ? data.is_bot : null;
+    this.lastSeen = typeof data.last_seen !== 'undefined' ? data.last_seen : null;
+    this.createdAt = typeof data.created_at !== 'undefined' ? data.created_at : null;
   }
 
   /**

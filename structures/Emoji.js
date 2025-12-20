@@ -5,54 +5,78 @@ const { formatUrl } = require("../helpers");
  */
 class Emoji {
     /**
-     * Creates a new Emoji instance.
-     * @param {Object} data - Raw emoji data.
-     * @param {string|number} data.id - The unique ID of the emoji.
-     * @param {string|number} data.user_id - The ID of the user who uploaded the emoji.
-     * @param {string} data.name - The name of the emoji.
-     * @param {string} data.url - The URL of the emoji image.
-     * @param {string|number|Date} data.created_at - Timestamp when the emoji was created.
-     * @returns {Emoji} The created Emoji instance.
-     * @example 
+     * Cria uma nova instância de Emoji.
+     * @param {Object} data - Dados crus do emoji vindos da API.
+     * @param {number} data.id - ID único do emoji.
+     * @param {number} data.owner_id - ID do dono do emoji.
+     * @param {string} data.name - Nome do emoji.
+     * @param {string} data.url - URL da imagem do emoji.
+     * @param {string} data.created_at - Data de criação do emoji.
+     * @param {boolean} data.can_use - Se o emoji pode ser usado.
+     * @param {string} data.username - Username do dono.
+     * @param {string} data.display_name - Nome de exibição do dono.
+     * @returns {Emoji} Instância criada de Emoji.
+     * @example
      * Emoji {
      *   id: 1,
-     *   userId: 1,
+     *   ownerId: 1,
      *   name: 'shitcord',
      *   url: 'https://api.beniocord.site/uploads/emojis/1758982533925-364594757.png',
-     *   createdAt: '2025-09-27T14:15:33.932Z'
+     *   createdAt: '2025-09-27T14:15:33.932Z',
+     *   canUse: true,
+     *   username: 'benio',
+     *   displayName: 'Benio'
      * }
-     * 
      */
     constructor(data) {
         /**
-         * The unique ID of the emoji.
-         * @type {string|number}
+         * ID único do emoji.
+         * @type {number}
          */
         this.id = data.id;
 
         /**
-         * The ID of the user who uploaded the emoji.
-         * @type {string|number}
+         * ID do dono do emoji.
+         * @type {number}
          */
-        this.userId = data.user_id;
+        this.ownerId = data.owner_id;
 
         /**
-         * The name of the emoji.
+         * Nome do emoji.
          * @type {string}
          */
         this.name = data.name;
 
         /**
-         * The URL of the emoji image.
+         * URL formatada da imagem do emoji.
          * @type {string}
          */
         this.url = formatUrl(data.url);
 
         /**
-         * Timestamp when the emoji was created.
-         * @type {string|number|Date}
+         * Data de criação do emoji.
+         * @type {string}
          */
         this.createdAt = data.created_at;
+
+
+        /**
+         * Se o emoji pode ser usado.
+         * @type {boolean}
+         */
+        this.canUse = data.can_use;
+
+        /**
+         * Username do dono do emoji.
+         * @type {string}
+         */
+        this.username = data.username;
+
+        /**
+         * Nome de exibição do dono do emoji.
+         * @type {string}
+         */
+        this.displayName = data.display_name;
     }
 }
 

@@ -5,70 +5,93 @@ const { formatUrl } = require("../helpers");
  */
 class Sticker {
   /**
-   * Creates a new Sticker instance.
-   * @param {Object} data - Raw sticker data.
-   * @param {string|number} data.id - The unique ID of the sticker.
-   * @param {string|number} data.user_id - The ID of the user who uploaded the sticker.
-   * @param {string} data.name - The name of the sticker.
-   * @param {string} data.url - The URL of the sticker image.
-   * @param {string[]|null} data.tags - Array of tags associated with the sticker.
-   * @param {string|number|Date} data.created_at - Timestamp when the sticker was created.
-   * @param {string|number|Date} data.updated_at - Timestamp when the sticker was last updated.
-   * @returns {Sticker} The created Sticker instance.
-   * 
+   * Cria uma nova instância de Sticker.
+   * @param {Object} data - Dados crus do sticker vindos da API.
+   * @param {number} data.id - ID único do sticker.
+   * @param {number} data.owner_id - ID do dono do sticker.
+   * @param {string} data.name - Nome do sticker.
+   * @param {string} data.url - URL da imagem do sticker.
+   * @param {string|string[]} data.tags - Tags associadas ao sticker.
+   * @param {string} data.created_at - Data de criação do sticker.
+   * @param {boolean} data.can_use - Se o sticker pode ser usado.
+   * @param {string} data.username - Username do dono.
+   * @param {string} data.display_name - Nome de exibição do dono.
+   * @returns {Sticker} Instância criada de Sticker.
+   *
    * @example
    * Sticker {
-   *   id: 2,
-   *   userId: 1,
-   *   name: 'saboroso',
-   *   url: 'https://api.beniocord.site/uploads/stickers/1758986145335-603013635.png',
-   *   tags: [ 'sabor', 'delicia', 'gostoso' ],
-   *   createdAt: '2025-09-27T15:15:45.555Z',
-   *   updatedAt: '2025-09-27T15:15:45.555Z'
+   *   id: 4,
+   *   ownerId: 7,
+   *   name: 'osuhow',
+   *   tags: [],
+   *   url: 'https://api.beniocord.site/uploads/stickers/1766100944970-73288347.png',
+   *   createdAt: '2025-12-18T23:35:44.985Z',
+   *   canUse: false,
+   *   username: 'joneor',
+   *   displayName: 'Juner'
    * }
    */
   constructor(data) {
     /**
-     * The unique ID of the sticker.
-     * @type {string|number}
+     * ID único do sticker.
+     * @type {number}
      */
     this.id = data.id;
 
     /**
-     * The ID of the user who uploaded the sticker.
-     * @type {string|number}
+     * ID do dono do sticker.
+     * @type {number}
      */
-    this.userId = data.user_id;
+    this.ownerId = data.owner_id;
 
     /**
-     * The name of the sticker.
+     * Nome do sticker.
      * @type {string}
      */
     this.name = data.name;
 
     /**
-     * Array of tags for the sticker.
+     * Tags associadas ao sticker.
      * @type {string[]}
      */
-    this.tags = Array.isArray(data.tags) ? data.tags : [];
+    if (Array.isArray(data.tags)) {
+      this.tags = data.tags;
+    } else if (typeof data.tags === 'string' && data.tags.length > 0) {
+      this.tags = data.tags.split(',').map(t => t.trim()).filter(Boolean);
+    } else {
+      this.tags = [];
+    }
 
     /**
-     * The formatted URL of the sticker image.
+     * URL formatada da imagem do sticker.
      * @type {string}
      */
     this.url = formatUrl(data.url);
 
     /**
-     * Timestamp when the sticker was created.
-     * @type {string|number|Date}
+     * Data de criação do sticker.
+     * @type {string}
      */
     this.createdAt = data.created_at;
 
+
     /**
-     * Timestamp when the sticker was last updated.
-     * @type {string|number|Date}
+     * Se o sticker pode ser usado.
+     * @type {boolean}
      */
-    this.updatedAt = data.updated_at;
+    this.canUse = data.can_use;
+
+    /**
+     * Username do dono do sticker.
+     * @type {string}
+     */
+    this.username = data.username;
+
+    /**
+     * Nome de exibição do dono do sticker.
+     * @type {string}
+     */
+    this.displayName = data.display_name;
   }
 }
 

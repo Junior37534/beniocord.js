@@ -11,88 +11,82 @@ class Message {
   /**
    * Creates a new Message instance.
    * @param {Object} data - Raw message data.
-   * @param {string|number} data.id - The unique ID of the message.
+   * @param {number} data.id - The unique ID of the message.
+   * @param {number} data.channel_id - The channel ID where the message was sent.
+   * @param {number} data.user_id - The user ID of the author.
    * @param {string} data.content - The content of the message.
-   * @param {string} [data.message_type="text"] - The type of the message (text, file, etc.).
-   * @param {string} [data.file_url] - URL of the attached file.
-   * @param {string} [data.file_name] - Name of the attached file.
-   * @param {number} [data.file_size] - Size of the attached file in bytes.
-   * @param {Object} [data.user] - Author user data.
-   * @param {Object} [data.channel] - Channel data where the message was sent.
-   * @param {string|number} [data.reply_to] - ID of the message this is replying to.
-   * @param {Object} [data.sticker] - Sticker object attached to the message.
-   * @param {string|number|Date} [data.edited_at] - Timestamp when the message was edited.
-   * @param {string|number|Date} [data.created_at] - Timestamp when the message was created.
+   * @param {"text"|"image"|"video"|"audio"|"file"|"sticker"|"embed"} data.message_type - The type of the message.
+   * @param {string|null} data.file_url - URL of the attached file.
+   * @param {string|null} data.file_name - Name of the attached file.
+   * @param {number|null} data.file_size - Size of the attached file in bytes.
+   * @param {number|null} data.reply_to - ID of the message this is replying to.
+   * @param {string} [data.reply_content] - Content of the replied message.
+   * @param {string|null} [data.reply_message_type] - Type of the replied message.
+   * @param {string} [data.reply_username] - Username of the replied user.
+   * @param {string|null} [data.reply_display_name] - Display name of the replied user.
+   * @param {string|null} [data.reply_avatar_url] - Avatar URL of the replied user.
+   * @param {string|null} [data.reply_user_id] - User ID of the replied user.
+   * @param {string|null} data.edited_at - Timestamp when the message was edited.
+   * @param {string} data.created_at - Timestamp when the message was created.
+   * @param {number|null} [data.sticker_id] - Sticker ID attached to the message.
+   * @param {string|null} [data.embed_data] - Embed data if present.
    * @param {Object} clientInstance - The client instance.
    * @returns {Message} The created Message instance.
    * @example
    * Message {
-   *   id: 20711,
-   *   content: 'Hello World!',
-   *   messageType: 'text',
-   *   fileUrl: null,
-   *   fileName: null,
+   *   id: 1875,
+   *   channelId: 4,
+   *   userId: 1,
+   *   content: 'Sticker: crazy',
+   *   messageType: 'sticker',
+   *   fileUrl: 'https://api.beniocord.site/uploads/stickers/1765027757156-305382752.png',
+   *   fileName: 'crazy.png',
    *   fileSize: null,
-   *   attachments: [],
-   *   replyTo: 20709,
    *   editedAt: null,
-   *   createdAt: '2025-11-16T14:29:40.598Z',
-   *   sticker: {
-   *     id: 1,
-   *     name: 'carrin',
-   *     url: '/uploads/stickers/1758986081574-510376341.gif',
-   *     tags: [],
-   *     user_id: 2,
-   *     owner: 'kkauabr'
+   *   createdAt: '2025-12-20T20:54:46.247Z',
+   *   stickerId: 3,
+   *   embedData: null,
+   *   replyToId: 1874,
+   *   replyMessage: {
+   *     content: 'Hello world',
+   *     username: 'juniorcanary',
+   *     displayName: 'Junior canary',
+   *     avatarUrl: 'https://api.beniocord.site/uploads/avatars/1764896784903-442484585.png',
+   *     messageType: 'text',
+   *     userId: 1
    *   },
-   *   author: User {
-   *     id: 1,
-   *     username: 'junior9244',
-   *     displayName: 'Junior',
-   *     avatarUrl: 'https://api.beniocord.site/uploads/avatars/1760736025811-629632107.png',
-   *     status: 'online',
-   *     emblems: [],
-   *     isBot: false,
-   *     lastSeen: '2025-11-16T14:29:40.598Z',
-   *     createdAt: '2025-11-16T14:29:40.598Z'
-   *   },
-   *   channel: Channel {
-   *     id: 2,
-   *     name: 'Privado',
-   *     description: 'DM Privada para conversar secretas!\n',
-   *     type: 'text',
-   *     iconUrl: 'https://api.beniocord.site/uploads/1762899895145-938680330.gif',
-   *     ownerId: 1,
-   *     isPrivate: true,
-   *     isLocked: false,
-   *     memberCount: 8,
-   *     createdAt: '2025-09-21T15:28:43.610Z',
-   *     updatedAt: '2025-11-11T23:49:54.906Z',
-   *     members: Collection(0) [Map] { fetch: [AsyncFunction (anonymous)] },
-   *     messages: Collection(0) [Map] { fetch: [AsyncFunction (anonymous)] }
-   *   }
+   *   author: User {...},
+   *   channel: Channel {...},
+   *   sticker: Sticker {...}
    * }
    */
   constructor(data, clientInstance) {
     this.id = data.id;
+    this.channelId = data.channel_id;
+    this.userId = data.user_id;
     this.content = data.content;
-    this.messageType = data.message_type || "text";
-    this.fileUrl = formatUrl(data.file_url);
-    this.fileName = data.file_name;
-    this.fileSize = data.file_size;
-    this.attachments = [];
-    this.replyTo = data.reply_to;
-    this.editedAt = data.edited_at;
+    this.messageType = data.message_type;
+    this.fileUrl = data.file_url ? formatUrl(data.file_url) : null;
+    this.fileName = data.file_name ?? null;
+    this.fileSize = data.file_size ?? null;
+    this.editedAt = data.edited_at ?? null;
     this.createdAt = data.created_at;
-
-    this.sticker = null;
-
-    if (data.file_url) {
-      this.attachments.push({
-        url: this.fileUrl,
-        name: this.fileName,
-        size: this.fileSize,
-      });
+    this.stickerId = data.sticker_id ?? null;
+    this.embedData = data.embed_data ?? null;
+    // Reply fields
+    if (data.reply_to != null) {
+      this.replyToId = data.reply_to;
+      this.replyMessage = {
+        content: data.reply_content ?? '',
+        username: data.reply_username ?? '',
+        displayName: data.reply_display_name ?? null,
+        avatarUrl: data.reply_avatar_url ? formatUrl(data.reply_avatar_url) : null,
+        messageType: data.reply_message_type ?? '',
+        userId: data.reply_user_id ?? ''
+      };
+    } else {
+      this.replyToId = null;
+      this.replyMessage = null;
     }
 
     this.author = data.user ? new User(data.user, clientInstance) : null;

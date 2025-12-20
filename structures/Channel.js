@@ -73,7 +73,7 @@ class Channel {
 
     /**
      * Cached messages of the channel.
-     * @type {Collection<string, import('./Message')>}
+     * @type {Collection<string, Message>}
      */
     this.messages = new Collection();
     this.messages.fetch = async (id) => {
@@ -96,7 +96,7 @@ class Channel {
    * Sends a message to the channel.
    * @param {string|Object} content - The content of the message.
    * @param {Object} [opts] - Optional message options.
-   * @returns {Promise<import('./Message')>} The sent message.
+   * @returns {Promise<Message>} The sent message.
    */
   async send(content, opts = {}) {
     return client.sendMessage(this.id, content, opts);
