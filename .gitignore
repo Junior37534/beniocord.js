@@ -1,6 +1,7 @@
 bots/
-beniomusic/
-ajuda24h/
+bots/beniomusic/
+bots/ajuda24h/
+bots/bot/
 node_modules/
 docgen/
 package-lock.json

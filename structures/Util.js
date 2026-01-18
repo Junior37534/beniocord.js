@@ -586,7 +586,89 @@ class MessageAttachment {
         }
         this.buffer = buffer;
         this.name = name;
+        this.type = this._detectType();
+    }
+
+    /**
+     * Detects the file type based on extension
+     * @private
+     * @returns {string} The detected type
+     */
+    _detectType() {
+        const ext = this.name.split('.').pop().toLowerCase();
+
+        const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg'];
+        const videoExts = ['mp4', 'avi', 'mov', 'wmv', 'flv', 'mkv', 'webm'];
+        const audioExts = ['mp3', 'wav', 'ogg', 'flac', 'aac', 'm4a', 'weba', 'opus', 'wma'];
+
+        if (imageExts.includes(ext)) return 'image';
+        if (videoExts.includes(ext)) return 'video';
+        if (audioExts.includes(ext)) return 'audio';
+        return 'file';
     }
 }
 
-module.exports = { MessageEmbed, MessageAttachment };
+/**
+ * @class
+ */
+class MessageImageAttachment extends MessageAttachment {
+    /**
+     * Creates a new MessageImageAttachment instance.
+     *
+     * @param {Buffer|Uint8Array|string} buffer - The image data.
+     * @param {string} name - The name of the image file (e.g., "screenshot.png").
+     *
+     * @example
+     * const image = new MessageImageAttachment(imageBuffer, "screenshot.png");
+     */
+    constructor(buffer, name) {
+        super(buffer, name);
+        this.type = 'image';
+    }
+}
+
+/**
+ * @class
+ */
+class MessageAudioAttachment extends MessageAttachment {
+    /**
+     * Creates a new MessageAudioAttachment instance.
+     *
+     * @param {Buffer|Uint8Array|string} buffer - The audio data.
+     * @param {string} name - The name of the audio file (e.g., "voice_message.mp3").
+     *
+     * @example
+     * const audio = new MessageAudioAttachment(audioBuffer, "song.mp3");
+     */
+    constructor(buffer, name) {
+        super(buffer, name);
+        this.type = 'audio';
+    }
+}
+
+/**
+ * @class
+ */
+class MessageVideoAttachment extends MessageAttachment {
+    /**
+     * Creates a new MessageVideoAttachment instance.
+     *
+     * @param {Buffer|Uint8Array|string} buffer - The video data.
+     * @param {string} name - The name of the video file (e.g., "video.mp4").
+     *
+     * @example
+     * const video = new MessageVideoAttachment(videoBuffer, "clip.mp4");
+     */
+    constructor(buffer, name) {
+        super(buffer, name);
+        this.type = 'video';
+    }
+}
+
+module.exports = {
+    MessageEmbed,
+    MessageAttachment,
+    MessageImageAttachment,
+    MessageAudioAttachment,
+    MessageVideoAttachment
+};

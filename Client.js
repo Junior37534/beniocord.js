@@ -11,7 +11,7 @@ const Channel = require("./structures/Channel");
 const Emoji = require("./structures/Emoji");
 const Sticker = require("./structures/Sticker");
 
-const { MessageEmbed, MessageAttachment } = require("./structures/Util");
+const { MessageEmbed, MessageAttachment, MessageImageAttachment, MessageAudioAttachment, MessageVideoAttachment } = require("./structures/Util");
 const { formatUrl, stripDomain } = require("./helpers");
 
 let global = {
@@ -541,20 +541,16 @@ class Client extends EventEmitter {
 
         // Handle MessageAttachment as opts (backward compatibility)
         if (opts instanceof MessageAttachment) {
-          const uploadedFile = await this.uploadFile(opts);
-          if (uploadedFile) {
-            const mimetype = opts.name.split('.').pop().toLowerCase();
-            const detectedType = ['png', 'jpg', 'jpeg', 'gif', 'webp'].includes(mimetype)
-              ? 'image'
-              : 'file';
-            opts = {
-              fileUrl: uploadedFile.url,
-              fileName: uploadedFile.originalName,
-              fileSize: uploadedFile.size,
-              messageType: detectedType
-            };
-            messageType = detectedType;
-          }
+          const fileData = await this._handleFileUpload(opts.buffer, opts.name);
+          const detectedType = opts.type || fileData.detectedType;
+
+          opts = {
+            fileUrl: fileData.url,
+            fileName: fileData.originalName,
+            fileSize: fileData.size,
+            messageType: detectedType
+          };
+          messageType = detectedType;
         }
 
         // Handle file upload
@@ -671,6 +667,155 @@ class Client extends EventEmitter {
     });
   }
 
+  // ============================================================================
+  // PUBLIC API METHODS - File/Media Sending
+  // ============================================================================
+
+  /**
+   * Sends a file to a channel
+   * @param {string} channelId - Channel ID
+   * @param {Buffer|string} file - Buffer, base64 string, or file path
+   * @param {Object} options - Send options
+   * @param {string} options.fileName - File name (required for Buffer/base64)
+   * @param {string} options.content - Optional text content to send with the file
+   * @param {string} options.replyTo - Optional message ID to reply to
+   * @returns {Promise<Message>} Sent message object
+   * @example
+   * // Send from file path
+   * client.sendFile(channelId, './document.pdf');
+   * 
+   * // Send from buffer
+   * client.sendFile(channelId, buffer, { fileName: 'document.pdf' });
+   * 
+   * // Send with message
+   * client.sendFile(channelId, './photo.png', { content: 'Check this out!' });
+   */
+  async sendFile(channelId, file, options = {}) {
+    const { fileName, content = '', replyTo } = options;
+
+    try {
+      const fileData = await this._handleFileUpload(file, fileName);
+
+      return this.sendMessage(channelId, content, {
+        file: null, // Already uploaded
+        fileUrl: fileData.url,
+        fileName: fileData.originalName,
+        fileSize: fileData.size,
+        messageType: fileData.detectedType,
+        replyTo,
+      });
+    } catch (error) {
+      throw error instanceof ClientError ? error : new ClientError(error.message, "SEND_FILE_ERROR");
+    }
+  }
+
+  /**
+   * Sends an image to a channel
+   * @param {string} channelId - Channel ID
+   * @param {Buffer|string} image - Buffer, base64 string, or file path
+   * @param {Object} options - Send options
+   * @param {string} options.fileName - File name (required for Buffer/base64)
+   * @param {string} options.content - Optional text content to send with the image
+   * @param {string} options.replyTo - Optional message ID to reply to
+   * @returns {Promise<Message>} Sent message object
+   * @example
+   * // Send from file path
+   * client.sendImage(channelId, './photo.png');
+   * 
+   * // Send from buffer
+   * client.sendImage(channelId, imageBuffer, { fileName: 'screenshot.png' });
+   * 
+   * // Send from base64
+   * client.sendImage(channelId, 'data:image/png;base64,...');
+   */
+  async sendImage(channelId, image, options = {}) {
+    const { fileName, content = '', replyTo } = options;
+
+    try {
+      const fileData = await this._handleFileUpload(image, fileName);
+
+      return this.sendMessage(channelId, content, {
+        fileUrl: fileData.url,
+        fileName: fileData.originalName,
+        fileSize: fileData.size,
+        messageType: 'image',
+        replyTo,
+      });
+    } catch (error) {
+      throw error instanceof ClientError ? error : new ClientError(error.message, "SEND_IMAGE_ERROR");
+    }
+  }
+
+  /**
+   * Sends an audio file to a channel
+   * @param {string} channelId - Channel ID
+   * @param {Buffer|string} audio - Buffer, base64 string, or file path
+   * @param {Object} options - Send options
+   * @param {string} options.fileName - File name (required for Buffer/base64)
+   * @param {string} options.content - Optional text content to send with the audio
+   * @param {string} options.replyTo - Optional message ID to reply to
+   * @returns {Promise<Message>} Sent message object
+   * @example
+   * // Send from file path
+   * client.sendAudio(channelId, './song.mp3');
+   * 
+   * // Send from buffer (voice recording for example)
+   * client.sendAudio(channelId, audioBuffer, { fileName: 'voice_message.ogg' });
+   * 
+   * // Send with content
+   * client.sendAudio(channelId, './podcast.mp3', { content: 'New episode!' });
+   */
+  async sendAudio(channelId, audio, options = {}) {
+    const { fileName, content = '', replyTo } = options;
+
+    try {
+      const fileData = await this._handleFileUpload(audio, fileName);
+
+      return this.sendMessage(channelId, content, {
+        fileUrl: fileData.url,
+        fileName: fileData.originalName,
+        fileSize: fileData.size,
+        messageType: 'audio',
+        replyTo,
+      });
+    } catch (error) {
+      throw error instanceof ClientError ? error : new ClientError(error.message, "SEND_AUDIO_ERROR");
+    }
+  }
+
+  /**
+   * Sends a video to a channel
+   * @param {string} channelId - Channel ID
+   * @param {Buffer|string} video - Buffer, base64 string, or file path
+   * @param {Object} options - Send options
+   * @param {string} options.fileName - File name (required for Buffer/base64)
+   * @param {string} options.content - Optional text content to send with the video
+   * @param {string} options.replyTo - Optional message ID to reply to
+   * @returns {Promise<Message>} Sent message object
+   * @example
+   * // Send from file path
+   * client.sendVideo(channelId, './video.mp4');
+   * 
+   * // Send from buffer
+   * client.sendVideo(channelId, videoBuffer, { fileName: 'clip.mp4' });
+   */
+  async sendVideo(channelId, video, options = {}) {
+    const { fileName, content = '', replyTo } = options;
+
+    try {
+      const fileData = await this._handleFileUpload(video, fileName);
+
+      return this.sendMessage(channelId, content, {
+        fileUrl: fileData.url,
+        fileName: fileData.originalName,
+        fileSize: fileData.size,
+        messageType: 'video',
+        replyTo,
+      });
+    } catch (error) {
+      throw error instanceof ClientError ? error : new ClientError(error.message, "SEND_VIDEO_ERROR");
+    }
+  }
 
   /**
    * Deletes a message
@@ -715,7 +860,28 @@ class Client extends EventEmitter {
       }
 
       const res = await this._axios.get(`/api/channels/${channelId}/messages`, { params });
-      const messages = res.data.map(m => new Message(m, this));
+
+      const messages = res.data.map(raw => {
+        let userData = raw.user;
+        if (!userData && raw.user_id) {
+          userData = {
+            id: raw.user_id,
+            username: raw.username,
+            display_name: raw.display_name,
+            avatar_url: raw.avatar_url,
+            status: raw.status || 'online',
+            emblems: raw.emblems || [],
+            is_bot: raw.is_bot ?? false,
+            last_seen: raw.last_seen ?? raw.created_at,
+            created_at: raw.created_at,
+          };
+        }
+
+        const messageData = { ...raw, user: userData };
+        const msg = new Message(messageData, this);
+        if (msg.author) this.cache.users.set(msg.author.id, msg.author);
+        return msg;
+      });
 
       if (!this.cache.messages.has(channelId)) {
         this.cache.messages.set(channelId, []);
@@ -727,6 +893,24 @@ class Client extends EventEmitter {
           cachedMessages.push(msg);
         }
       });
+
+      let channel = this.cache.channels.get(channelId);
+      if (!channel) {
+        const id = String(channelId);
+        for (const [key, val] of this.cache.channels) {
+          if (String(key) === id) {
+            channel = val;
+            break;
+          }
+        }
+      }
+
+      if (channel) {
+        messages.forEach(msg => {
+          if (!msg.channel) msg.channel = channel;
+          channel.messages.set(msg.id, msg);
+        });
+      }
 
       return messages;
     } catch (error) {
@@ -930,30 +1114,6 @@ class Client extends EventEmitter {
       return res.data;
     } catch (error) {
       throw error instanceof ClientError ? error : new ClientError(error.message, "FETCH_STICKERS_ERROR");
-    }
-  }
-
-  // ============================================================================
-  // PUBLIC API METHODS - File Upload
-  // ============================================================================
-
-  /**
-   * Uploads a file to the server
-   * @param {MessageAttachment} file - File attachment to upload
-   * @returns {Promise<Object>} Upload response with file URL
-   */
-  async uploadFile(file) {
-    try {
-      const formData = new FormData();
-      formData.append('file', file.buffer, { filename: file.name });
-      const res = await this._axios.post('/api/upload', formData, {
-        headers: formData.getHeaders(),
-        timeout: 30000
-      });
-
-      return res.data;
-    } catch (error) {
-      throw error instanceof ClientError ? error : new ClientError(error.message, "UPLOAD_ERROR");
     }
   }
 
@@ -1531,6 +1691,16 @@ class Client extends EventEmitter {
           'image/webp': '.webp',
           'video/mp4': '.mp4',
           'video/webm': '.webm',
+          'audio/mpeg': '.mp3',
+          'audio/mp3': '.mp3',
+          'audio/wav': '.wav',
+          'audio/wave': '.wav',
+          'audio/ogg': '.ogg',
+          'audio/webm': '.weba',
+          'audio/aac': '.aac',
+          'audio/flac': '.flac',
+          'audio/m4a': '.m4a',
+          'audio/x-m4a': '.m4a',
         };
 
         const ext = mimeToExt[mimeType] || '.bin';
@@ -1557,11 +1727,14 @@ class Client extends EventEmitter {
     const ext = path.extname(finalFileName).toLowerCase();
     const imageExts = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.svg'];
     const videoExts = ['.mp4', '.avi', '.mov', '.wmv', '.flv', '.mkv', '.webm'];
+    const audioExts = ['.mp3', '.wav', '.ogg', '.flac', '.aac', '.m4a', '.weba', '.opus', '.wma'];
 
     if (imageExts.includes(ext)) {
       detectedType = 'image';
     } else if (videoExts.includes(ext)) {
       detectedType = 'video';
+    } else if (audioExts.includes(ext)) {
+      detectedType = 'audio';
     } else {
       detectedType = 'file';
     }
@@ -1634,5 +1807,9 @@ class ClientError extends Error {
 }
 
 Client.MessageEmbed = MessageEmbed;
+Client.MessageAttachment = MessageAttachment;
+Client.MessageImageAttachment = MessageImageAttachment;
+Client.MessageAudioAttachment = MessageAudioAttachment;
+Client.MessageVideoAttachment = MessageVideoAttachment;
 // Client.ClientError = ClientError;
 module.exports = Client;
