@@ -62,12 +62,13 @@ class Client extends EventEmitter {
    * @param {Object} options - Client configuration options
    * @param {string} options.token - Bot token used for authentication
    * @param {string} options.api_url - Override default API URL
+   * @param {number} [options.messageCacheLimit=50] - Maximum number of messages to cache per channel (default: 50)
    * @example
    * const Beniocord = require('beniocord.js');
    * const client = new Beniocord({ token: 'YOUR_BOT_TOKEN' });
    * client.login();
    */
-  constructor({ token, api_url } = {}) {
+  constructor({ token, api_url, messageCacheLimit = 50 } = {}) {
     super();
 
     const API_URL = api_url ?? global.apiUrl;
@@ -93,6 +94,7 @@ class Client extends EventEmitter {
       requestTimeout: 999999,
       maxRetries: 9999,
       reconnectionDelay: 1000,
+      messageCacheLimit: messageCacheLimit,
     };
 
     this.retryCount = 0;
@@ -1575,7 +1577,7 @@ class Client extends EventEmitter {
 
       channel.messages.set(msg.id, msg);
 
-      if (channel.messages.size > 50) {
+      if (channel.messages.size > this.config.messageCacheLimit) {
         const firstKey = channel.messages.firstKey(); // método do Collection
         channel.messages.delete(firstKey);
       }
@@ -1587,10 +1589,19 @@ class Client extends EventEmitter {
    * @private
    */
   _markMessageDeleted(messageId) {
+    // Remove from channel array cache
     for (const [channelId, messages] of this.cache.messages) {
-      const msg = messages.find(m => m.id === messageId);
-      if (msg) {
-        msg.deleted = true;
+      const index = messages.findIndex(m => m.id === messageId);
+      if (index !== -1) {
+        messages.splice(index, 1);
+        break;
+      }
+    }
+
+    // Remove from channel messages collection
+    for (const channel of this.cache.channels.values()) {
+      if (channel.messages.has(messageId)) {
+        channel.messages.delete(messageId);
         break;
       }
     }
