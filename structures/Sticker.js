@@ -24,7 +24,7 @@ class Sticker {
    *   ownerId: 7,
    *   name: 'osuhow',
    *   tags: [],
-   *   url: 'https://api.beniocord.site/uploads/stickers/1766100944970-73288347.png',
+   *   url: 'https://beniocord.com/uploads/stickers/1766100944970-73288347.png',
    *   createdAt: '2025-12-18T23:35:44.985Z',
    *   canUse: false,
    *   username: 'joneor',

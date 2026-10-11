@@ -21,7 +21,7 @@ class Emoji {
      *   id: 1,
      *   ownerId: 1,
      *   name: 'shitcord',
-     *   url: 'https://api.beniocord.site/uploads/emojis/1758982533925-364594757.png',
+     *   url: 'https://beniocord.com/uploads/emojis/1758982533925-364594757.png',
      *   createdAt: '2025-09-27T14:15:33.932Z',
      *   canUse: true,
      *   username: 'benio',

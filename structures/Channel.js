@@ -31,7 +31,7 @@ class Channel {
    *   name: 'Privado',
    *   description: 'DM Privada para conversar secretas!\n',
    *   type: 'text',
-   *   iconUrl: 'https://api.beniocord.site/uploads/1762899895145-938680330.gif',
+   *   iconUrl: 'https://beniocord.com/uploads/1762899895145-938680330.gif',
    *   ownerId: 1,
    *   isPrivate: true,
    *   isLocked: false,

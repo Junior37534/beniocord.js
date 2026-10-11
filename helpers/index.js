@@ -58,7 +58,7 @@ const errors = {
 };
 
 function formatUrl(url) {
-    const base = 'https://api.beniocord.site';
+    const base = 'https://beniocord.com';
     if (!url) return null;
     if (url.startsWith(base) || url.startsWith('http')) return url;
     return base + (url.startsWith('/') ? url : '/' + url);

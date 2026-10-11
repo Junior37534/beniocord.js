@@ -39,7 +39,7 @@ class Message {
    *   userId: 1,
    *   content: 'Sticker: crazy',
    *   messageType: 'sticker',
-   *   fileUrl: 'https://api.beniocord.site/uploads/stickers/1765027757156-305382752.png',
+   *   fileUrl: 'https://beniocord.com/uploads/stickers/1765027757156-305382752.png',
    *   fileName: 'crazy.png',
    *   fileSize: null,
    *   editedAt: null,
@@ -51,7 +51,7 @@ class Message {
    *     content: 'Hello world',
    *     username: 'juniorcanary',
    *     displayName: 'Junior canary',
-   *     avatarUrl: 'https://api.beniocord.site/uploads/avatars/1764896784903-442484585.png',
+   *     avatarUrl: 'https://beniocord.com/uploads/avatars/1764896784903-442484585.png',
    *     messageType: 'text',
    *     userId: 1
    *   },

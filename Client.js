@@ -14,9 +14,12 @@ const Sticker = require("./structures/Sticker");
 const { MessageEmbed, MessageAttachment, MessageImageAttachment, MessageAudioAttachment, MessageVideoAttachment } = require("./structures/Util");
 const { formatUrl, stripDomain } = require("./helpers");
 
+const DEFAULT_API_URL = "https://api-bots.beniocord.com";
+
 let global = {
   token: "",
-  apiUrl: "https://api-bots.beniocord.site"
+  apiUrl: DEFAULT_API_URL,
+  origin: DEFAULT_API_URL
 };
 
 class Client extends EventEmitter {
@@ -71,14 +74,16 @@ class Client extends EventEmitter {
   constructor({ token, api_url, messageCacheLimit = 50 } = {}) {
     super();
 
-    const API_URL = api_url ?? global.apiUrl;
+    const API_URL = api_url ?? DEFAULT_API_URL;
 
     if (!token || typeof token !== 'string' || token.trim() === '') {
       throw new ClientError("Valid token is required", "INVALID_TOKEN");
     }
 
     global.token = token.trim();
-    global.apiUrl = API_URL;
+    global.apiUrl = API_URL.replace(/\/+$/, "");
+    // The server only accepts bot tokens whose Origin matches its bot API URL
+    global.origin = new URL(global.apiUrl).origin;
 
     // Client state
     this.socket = null;
@@ -120,7 +125,7 @@ class Client extends EventEmitter {
         'Authorization': `Bearer ${global.token}`,
         'x-bot-token': global.token,
         'Content-Type': 'application/json',
-        'Origin': global.apiUrl
+        'Origin': global.origin
       }
     });
 
@@ -1157,7 +1162,7 @@ class Client extends EventEmitter {
 
       this.socket = io(global.apiUrl, {
         auth: { token: global.token },
-        extraHeaders: { 'Origin': global.apiUrl },
+        extraHeaders: { 'Origin': global.origin },
         timeout: 5000,
         reconnection: true,
         reconnectionDelay: this.config.reconnectionDelay,
@@ -1196,7 +1201,10 @@ class Client extends EventEmitter {
 
         const errorStr = error.message.toLowerCase();
 
-        if (errorStr.includes("401") || errorStr.includes("unauthorized")) {
+        if (errorStr.includes("no valid entry point")) {
+          errorCode = "BOTS_NOT_ALLOWED";
+          errorMessage = `Bots are not allowed through ${global.apiUrl}`;
+        } else if (errorStr.includes("401") || errorStr.includes("unauthorized")) {
           errorCode = "UNAUTHORIZED";
           errorMessage = "Invalid token";
         } else if (errorStr.includes("403") || errorStr.includes("forbidden")) {

@@ -25,8 +25,8 @@ class User {
    *   id: 1,
    *   username: 'junior9244',
    *   displayName: 'Junior',
-   *   avatarUrl: 'https://api.beniocord.site/uploads/avatars/1760736025811-629632107.png',
-   *   bannerUrl: 'https://api.beniocord.site/uploads/banners/1760736025811-629632107.png',
+   *   avatarUrl: 'https://beniocord.com/uploads/avatars/1760736025811-629632107.png',
+   *   bannerUrl: 'https://beniocord.com/uploads/banners/1760736025811-629632107.png',
    *   status: 'online',
    *   emblems: [ [Object], [Object] ],
    *   isBot: false,
@@ -57,7 +57,7 @@ class User {
    * Returns the avatar URL of the user.
    * @returns {string} The avatar URL.
    * @example
-   * https://api.beniocord.site/uploads/avatars/1760736025811-629632107.png
+   * https://beniocord.com/uploads/avatars/1760736025811-629632107.png
    */
   avatarURL() {
     return this.avatarUrl;
