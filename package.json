@@ -5,8 +5,24 @@
     "socket.io-client": "^4.8.1"
   },
   "name": "beniocord.js",
-  "version": "2.1.6",
-  "description": "Uma biblioteca leve e intuitiva para integração com APIs de bots em plataformas de mensagens, como Discord. Facilita o envio de mensagens, gerenciamento de canais e interação com usuários, proporcionando uma experiência de desenvolvimento ágil e eficiente.",
+  "version": "2.1.7",
+  "description": "Biblioteca JavaScript oficial para criar bots no Beniocord (https://beniocord.com), o app de chat para comunidades. Envie mensagens, gerencie canais e interaja com usuários de forma simples.",
+  "homepage": "https://beniocord.com",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Junior37534/beniocord.js.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Junior37534/beniocord.js/issues"
+  },
+  "keywords": [
+    "beniocord",
+    "beniocord.js",
+    "bot",
+    "chat",
+    "api",
+    "sdk"
+  ],
   "main": "Client.js",
   "scripts": {
     "test": "node bot.js"

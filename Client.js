@@ -168,10 +168,18 @@ class Client extends EventEmitter {
    */
   async login() {
     try {
-      await this.validateToken();
+      const { user } = await this.validateToken();
+
+      // Servers that predate `isBot` here still refuse user tokens on their own.
+      if (user && user.isBot === false) {
+        throw new ClientError(
+          "The provided token does not belong to a bot user",
+          "NOT_A_BOT"
+        );
+      }
+
       await this._connectSocket();
       await this.fetchMe();
-      await this.setStatus('online');
 
       if (!this.user.isBot) {
         this.disconnect();
@@ -180,6 +188,8 @@ class Client extends EventEmitter {
           "NOT_A_BOT"
         );
       }
+
+      await this.setStatus('online');
 
       await this._joinAllChannelRooms();
 
@@ -1201,7 +1211,10 @@ class Client extends EventEmitter {
 
         const errorStr = error.message.toLowerCase();
 
-        if (errorStr.includes("no valid entry point")) {
+        if (errorStr.includes("user tokens cannot be used as bots")) {
+          errorCode = "NOT_A_BOT";
+          errorMessage = "The provided token does not belong to a bot user";
+        } else if (errorStr.includes("no valid entry point")) {
           errorCode = "BOTS_NOT_ALLOWED";
           errorMessage = `Bots are not allowed through ${global.apiUrl}`;
         } else if (errorStr.includes("401") || errorStr.includes("unauthorized")) {
@@ -1218,7 +1231,11 @@ class Client extends EventEmitter {
         const clientError = new ClientError(errorMessage, errorCode);
         this.emit("error", clientError);
 
-        if (this.retryCount >= this.config.maxRetries) {
+        // Retrying cannot fix a token the server refuses for what it is.
+        if (errorCode === "NOT_A_BOT" || errorCode === "BOTS_NOT_ALLOWED") {
+          this.socket.disconnect();
+          reject(clientError);
+        } else if (this.retryCount >= this.config.maxRetries) {
           reject(clientError);
         }
       });
@@ -1466,7 +1483,9 @@ class Client extends EventEmitter {
   _handleAxiosError(error) {
     if (error.response) {
       const { status, data } = error.response;
-      const errorCode = data?.error || 'UNKNOWN_ERROR';
+      const errorCode = data?.error === 'USER_TOKEN_AS_BOT'
+        ? 'NOT_A_BOT'
+        : data?.error || 'UNKNOWN_ERROR';
       const errorMessage = data?.message || error.message;
 
       switch (status) {

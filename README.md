@@ -17,7 +17,7 @@ A powerful JavaScript library for building Beniocord bots with ease.
 
 ### About
 
-Beniocord.js is a powerful Node.js module that allows you to easily interact with the Beniocord API. It provides an intuitive and modern approach to bot development.
+Beniocord.js is a powerful Node.js module that allows you to easily interact with the API of [Beniocord](https://beniocord.com), a free chat app for communities, friends and bots. It provides an intuitive and modern approach to bot development.
 
 <!-- 
 ### Requirements
