@@ -5,7 +5,7 @@
     "socket.io-client": "^4.8.1"
   },
   "name": "beniocord.js",
-  "version": "2.1.7",
+  "version": "2.1.8",
   "description": "Biblioteca JavaScript oficial para criar bots no Beniocord (https://beniocord.com), o app de chat para comunidades. Envie mensagens, gerencie canais e interaja com usuários de forma simples.",
   "homepage": "https://beniocord.com",
   "repository": {
