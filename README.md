@@ -72,6 +72,40 @@ client.login();
 
 ---
 
+## Reactions
+
+```js
+await msg.react("✅");                     // unicode, custom emoji id, Emoji or "<&id>"
+await msg.removeReaction("✅");            // your own; pass a userId to moderate
+const users = await msg.fetchReactionUsers("✅", { limit: 50 });
+console.log(msg.reactions);               // [{ emoji: "✅", count: 2, me: true }]
+
+client.on("messageReactionAdd", ({ messageId, userId, emoji, count, message }) => {
+  // `message` is the cached message, or null if it isn't cached
+});
+client.on("messageReactionRemove", (data) => {});
+client.on("messageReactionClear", ({ messageId, emoji }) => {}); // emoji: null = all
+```
+
+---
+
+## Pins
+
+```js
+await msg.pin();                          // needs moderation rights (anyone can pin in DMs)
+await msg.unpin();
+console.log(msg.pinned, msg.pinnedAt);    // true "2026-11-04T12:00:00.000Z"
+
+const pins = await channel.fetchPins();   // or client.fetchPinnedMessages(channelId), newest pin first
+
+client.on("messagePin", ({ messageId, pinnedBy, message }) => {});
+client.on("messageUnpin", ({ messageId, unpinnedBy, message }) => {});
+```
+
+A channel holds up to 50 pinned messages; past that, `pin()` throws `MAX_PINS_REACHED`.
+
+---
+
 ## Useful Links
 
 * [Official Website](https://beniocord.com)

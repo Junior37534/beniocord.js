@@ -1,11 +1,12 @@
 {
   "dependencies": {
     "@discordjs/collection": "^2.1.1",
-    "axios": "^1.12.2",
+    "axios": "^1.21.0",
+    "form-data": "^4.0.6",
     "socket.io-client": "^4.8.1"
   },
   "name": "beniocord.js",
-  "version": "2.1.8",
+  "version": "2.2.0",
   "description": "Biblioteca JavaScript oficial para criar bots no Beniocord (https://beniocord.com), o app de chat para comunidades. Envie mensagens, gerencie canais e interaja com usuários de forma simples.",
   "homepage": "https://beniocord.com",
   "repository": {
@@ -25,7 +26,7 @@
   ],
   "main": "Client.js",
   "scripts": {
-    "test": "node bot.js"
+    "test": "node --test"
   },
   "author": "junior9244",
   "license": "ISC"

@@ -16,11 +16,28 @@ const { formatUrl, stripDomain } = require("./helpers");
 
 const DEFAULT_API_URL = "https://api-bots.beniocord.com";
 
-let global = {
-  token: "",
-  apiUrl: DEFAULT_API_URL,
-  origin: DEFAULT_API_URL
-};
+const ACK_TIMEOUT = 30000;
+const REQUEST_TIMEOUT = 30000;
+const REACTION_RETRIES = 2;
+const PIN_RETRIES = 1;
+
+// Ids become URL path segments: anything else could reach another route.
+function pathId(id) {
+  if (!/^\d+$/.test(String(id))) {
+    throw new ClientError(`Invalid id: ${id}`, "INVALID_ID");
+  }
+  return id;
+}
+
+// Accepts a unicode emoji, an Emoji object, a custom emoji id or its '<&id>' token.
+function resolveEmoji(emoji) {
+  const customId = typeof emoji === 'number' ? emoji : emoji?.id;
+  const value = customId != null ? `<&${customId}>` : emoji;
+  if (typeof value !== 'string' || value.trim() === '') {
+    throw new ClientError("Invalid emoji", "INVALID_EMOJI");
+  }
+  return value.trim();
+}
 
 class Client extends EventEmitter {
   /**
@@ -37,6 +54,11 @@ class Client extends EventEmitter {
    * @property {User} channelMemberUpdate - Fired when a member updates their info in a channel
    * @property {Emoji} emojiCreate - Fired when a new emoji is created
    * @property {Emoji} emojiDelete - Fired when an emoji is deleted
+   * @property {{channelId: number, messageId: number, userId: number, emoji: string, count: number, message: Message|null}} messageReactionAdd - Fired when someone reacts to a message
+   * @property {{channelId: number, messageId: number, userId: number, emoji: string, count: number, message: Message|null}} messageReactionRemove - Fired when a reaction is removed
+   * @property {{channelId: number, messageId: number, emoji: string|null, message: Message|null}} messageReactionClear - Fired when a moderator clears one emoji, or all of them (emoji: null)
+   * @property {{channelId: number, messageId: number, pinnedBy: number, pinnedAt: string, message: Message|null}} messagePin - Fired when a message is pinned
+   * @property {{channelId: number, messageId: number, unpinnedBy: number, message: Message|null}} messageUnpin - Fired when a message is unpinned
    * @property {Error} error - Fired when an error occurs
    * @property {void} disconnect - Fired when disconnected from the gateway
    * @property {void} reconnect - Fired when reconnecting to the gateway
@@ -45,6 +67,11 @@ class Client extends EventEmitter {
    * @fires Client#messageCreate
    * @fires Client#messageDelete
    * @fires Client#messageEdit
+   * @fires Client#messageReactionAdd
+   * @fires Client#messageReactionRemove
+   * @fires Client#messageReactionClear
+   * @fires Client#messagePin
+   * @fires Client#messageUnpin
    * @fires Client#error
    * @fires Client#disconnect
    * @fires Client#reconnect
@@ -80,10 +107,10 @@ class Client extends EventEmitter {
       throw new ClientError("Valid token is required", "INVALID_TOKEN");
     }
 
-    global.token = token.trim();
-    global.apiUrl = API_URL.replace(/\/+$/, "");
+    this._token = token.trim();
+    this._apiUrl = API_URL.replace(/\/+$/, "");
     // The server only accepts bot tokens whose Origin matches its bot API URL
-    global.origin = new URL(global.apiUrl).origin;
+    this._origin = new URL(this._apiUrl).origin;
 
     // Client state
     this.socket = null;
@@ -96,7 +123,8 @@ class Client extends EventEmitter {
     // Configuration options
     this.config = {
       connectionTimeout: 999999,
-      requestTimeout: 999999,
+      requestTimeout: REQUEST_TIMEOUT,
+      ackTimeout: ACK_TIMEOUT,
       maxRetries: 9999,
       reconnectionDelay: 1000,
       messageCacheLimit: messageCacheLimit,
@@ -117,15 +145,20 @@ class Client extends EventEmitter {
     // Track sent messages to avoid duplicates
     this._sentMessages = new Set();
 
+    // Keeps incoming messages in order while each one is processed
+    this._messageQueue = Promise.resolve();
+
     // Setup axios instance
     this._axios = axios.create({
-      baseURL: global.apiUrl,
+      baseURL: this._apiUrl,
       timeout: this.config.requestTimeout,
+      // The API never redirects; following one could hand x-bot-token to another host.
+      maxRedirects: 0,
       headers: {
-        'Authorization': `Bearer ${global.token}`,
-        'x-bot-token': global.token,
+        'Authorization': `Bearer ${this._token}`,
+        'x-bot-token': this._token,
         'Content-Type': 'application/json',
-        'Origin': global.origin
+        'Origin': this._origin
       }
     });
 
@@ -139,7 +172,7 @@ class Client extends EventEmitter {
       if (this._sentMessages.size > 1000) {
         this._sentMessages.clear();
       }
-    }, 30 * 60 * 1000);
+    }, 30 * 60 * 1000).unref();
   }
 
   // ============================================================================
@@ -237,9 +270,7 @@ class Client extends EventEmitter {
       this.socket.off("connect");
       this.socket.off("disconnect");
       this.socket.off("connect_error");
-      this.socket.off("reconnect");
-      this.socket.off("reconnect_error");
-      this.socket.off("reconnect_failed");
+      this.socket.io.off("reconnect_failed");
 
       this.socket.disconnect();
       this.socket = null;
@@ -318,7 +349,7 @@ class Client extends EventEmitter {
     }
 
     try {
-      const res = await this._axios.get(`/api/users/${id}`);
+      const res = await this._axios.get(`/api/users/${pathId(id)}`);
       const user = new User(res.data, this);
       this.cache.users.set(user.id, user);
       return user;
@@ -364,7 +395,7 @@ class Client extends EventEmitter {
     }
 
     try {
-      const res = await this._axios.get(`/api/channels/${id}`);
+      const res = await this._axios.get(`/api/channels/${pathId(id)}`);
       const channel = new Channel(res.data, this);
       this.cache.channels.set(channel.id, channel);
       return channel;
@@ -421,7 +452,7 @@ class Client extends EventEmitter {
       if (name !== undefined) data.name = name.trim();
       if (description !== undefined) data.description = description;
 
-      const res = await this._axios.patch(`/api/channels/${channelId}`, data);
+      const res = await this._axios.patch(`/api/channels/${pathId(channelId)}`, data);
       const channel = new Channel(res.data.channel, this);
       this.cache.channels.set(channel.id, channel);
       return channel;
@@ -437,7 +468,7 @@ class Client extends EventEmitter {
    */
   async deleteChannel(channelId) {
     try {
-      const res = await this._axios.delete(`/api/channels/${channelId}`);
+      const res = await this._axios.delete(`/api/channels/${pathId(channelId)}`);
       this.cache.channels.delete(channelId);
       return res.data;
     } catch (error) {
@@ -456,15 +487,13 @@ class Client extends EventEmitter {
    */
   async fetchChannelMembers(channelId) {
     try {
-      const res = await this._axios.get(`/api/channels/${channelId}/members`);
+      const res = await this._axios.get(`/api/channels/${pathId(channelId)}/members`);
       const channel = this.cache.channels.get(channelId);
-
-      if (!channel) throw new ClientError("Canal não encontrado", "CHANNEL_NOT_FOUND");
 
       const members = res.data.map(m => {
         const user = new User(m, this);
         this.cache.users.set(user.id, user);
-        channel.members.set(user.id, user);
+        channel?.members.set(user.id, user);
         return user;
       });
 
@@ -483,7 +512,7 @@ class Client extends EventEmitter {
    */
   async addChannelMember(channelId, userId, role = 'member') {
     try {
-      const res = await this._axios.post(`/api/channels/${channelId}/members`, {
+      const res = await this._axios.post(`/api/channels/${pathId(channelId)}/members`, {
         userId,
         role
       });
@@ -502,7 +531,7 @@ class Client extends EventEmitter {
    */
   async updateChannelMember(channelId, userId, data) {
     try {
-      const res = await this._axios.patch(`/api/channels/${channelId}/members/${userId}`, data);
+      const res = await this._axios.patch(`/api/channels/${pathId(channelId)}/members/${pathId(userId)}`, data);
       return res.data;
     } catch (error) {
       throw error instanceof ClientError ? error : new ClientError(error.message, "UPDATE_MEMBER_ERROR");
@@ -517,7 +546,7 @@ class Client extends EventEmitter {
    */
   async removeChannelMember(channelId, userId) {
     try {
-      const res = await this._axios.delete(`/api/channels/${channelId}/members/${userId}`);
+      const res = await this._axios.delete(`/api/channels/${pathId(channelId)}/members/${pathId(userId)}`);
       return res.data;
     } catch (error) {
       throw error instanceof ClientError ? error : new ClientError(error.message, "REMOVE_MEMBER_ERROR");
@@ -558,10 +587,16 @@ class Client extends EventEmitter {
 
         // Handle MessageAttachment as opts (backward compatibility)
         if (opts instanceof MessageAttachment) {
-          const fileData = await this._handleFileUpload(opts.buffer, opts.name);
-          const detectedType = opts.type || fileData.detectedType;
+          opts = { attachment: opts };
+        }
+
+        if (opts.attachment) {
+          const { attachment } = opts;
+          const fileData = await this._handleFileUpload(attachment.buffer, attachment.name);
+          const detectedType = attachment.type || fileData.detectedType;
 
           opts = {
+            ...opts,
             fileUrl: fileData.url,
             fileName: fileData.originalName,
             fileSize: fileData.size,
@@ -600,7 +635,7 @@ class Client extends EventEmitter {
           messageType = opts.messageType;
         }
 
-        this.socket.emit(
+        const response = await this._emitWithAck(
           'message:send',
           {
             channelId,
@@ -613,17 +648,13 @@ class Client extends EventEmitter {
             stickerId: opts.stickerId || null,
             embedData: embedData,
           },
-          async (response) => {
-            if (response && response.error) {
-              reject(new ClientError(response.error, "SEND_ERROR"));
-            } else {
-              this._sentMessages.add(response.id);
-              const msg = await this._processSocketMessage(response);
-              this._cacheMessage(msg);
-              resolve(msg);
-            }
-          }
+          "SEND_ERROR"
         );
+
+        this._sentMessages.add(response.id);
+        const msg = await this._processSocketMessage(response);
+        this._cacheMessage(msg);
+        resolve(msg);
       } catch (error) {
         reject(error instanceof ClientError ? error : new ClientError(error.message, "SEND_ERROR"));
       }
@@ -637,21 +668,16 @@ class Client extends EventEmitter {
    * @returns {Promise<Message>} Response data
    */
   async editMessage(messageId, newContent) {
-    return new Promise((resolve, reject) => {
-      this.socket.emit(
-        'message:edit',
-        { messageId, content: newContent },
-        async (response) => {
-          if (response && response.error) {
-            reject(new ClientError(response.error, "EDIT_ERROR"));
-          } else {
-            this._updateMessageContent(messageId, newContent, new Date().toISOString());
-            const msg = await this._processSocketMessage(response); // transforma response em Message
-            resolve(msg);
-          }
-        }
-      );
-    });
+    this._ensureConnected();
+
+    const response = await this._emitWithAck(
+      'message:edit',
+      { messageId, content: newContent },
+      "EDIT_ERROR"
+    );
+
+    this._updateMessageContent(messageId, response.content, response.edited_at);
+    return this._processSocketMessage(response); // transforma response em Message
   }
 
   /**
@@ -840,22 +866,11 @@ class Client extends EventEmitter {
    * @returns {Promise<Object>} Response data
    */
   async deleteMessage(messageId) {
-    return new Promise((resolve, reject) => {
-      try {
-        this._ensureConnected();
-      } catch (error) {
-        return reject(error);
-      }
+    this._ensureConnected();
 
-      this.socket.emit('message:delete', { messageId }, (response) => {
-        if (response && response.error) {
-          reject(new ClientError(response.error, "DELETE_ERROR"));
-        } else {
-          this._markMessageDeleted(messageId);
-          resolve(response);
-        }
-      });
-    });
+    const response = await this._emitWithAck('message:delete', { messageId }, "DELETE_ERROR");
+    this._markMessageDeleted(messageId);
+    return response;
   }
 
   /**
@@ -876,7 +891,7 @@ class Client extends EventEmitter {
         params.before = options.before;
       }
 
-      const res = await this._axios.get(`/api/channels/${channelId}/messages`, { params });
+      const res = await this._axios.get(`/api/channels/${pathId(channelId)}/messages`, { params });
 
       const messages = res.data.map(raw => {
         let userData = raw.user;
@@ -943,7 +958,7 @@ class Client extends EventEmitter {
    */
   async fetchMessage(channelId, messageId) {
     try {
-      const res = await this._axios.get(`/api/channels/${channelId}/messages/${messageId}`);
+      const res = await this._axios.get(`/api/channels/${pathId(channelId)}/messages/${pathId(messageId)}`);
       const raw = res.data;
 
       // --- USER ---
@@ -996,6 +1011,132 @@ class Client extends EventEmitter {
   }
 
   // ============================================================================
+  // PUBLIC API METHODS - Pins
+  // ============================================================================
+
+  /**
+   * Pins a message (pinning it twice changes nothing). In channels this needs
+   * moderation rights; in DMs anyone in the conversation can pin. A channel
+   * holds up to 50 pinned messages.
+   * @param {string|number} channelId - Channel ID
+   * @param {string|number} messageId - Message ID
+   * @returns {Promise<{success: boolean, changed: boolean, pinnedAt: string|null}>}
+   * @example
+   * await client.pinMessage(channelId, messageId);
+   */
+  async pinMessage(channelId, messageId) {
+    return this._pinRequest('put', `${this._pinUrl(channelId)}/${pathId(messageId)}`);
+  }
+
+  /**
+   * Unpins a message
+   * @param {string|number} channelId - Channel ID
+   * @param {string|number} messageId - Message ID
+   * @returns {Promise<{success: boolean, changed: boolean}>}
+   */
+  async unpinMessage(channelId, messageId) {
+    return this._pinRequest('delete', `${this._pinUrl(channelId)}/${pathId(messageId)}`);
+  }
+
+  /**
+   * Fetches the pinned messages of a channel, most recently pinned first
+   * @param {string|number} channelId - Channel ID
+   * @returns {Promise<Message[]>} Array of message objects
+   * @example
+   * const pins = await client.fetchPinnedMessages(channelId);
+   * console.log(pins.map(m => m.content));
+   */
+  async fetchPinnedMessages(channelId) {
+    const data = await this._pinRequest('get', this._pinUrl(channelId));
+    const channel = this.cache.channels.get(channelId) ?? this.cache.channels.get(Number(channelId)) ?? null;
+
+    return (data?.pins ?? []).map(raw => {
+      const msg = new Message({
+        ...raw,
+        user: {
+          id: raw.user_id,
+          username: raw.username,
+          display_name: raw.display_name,
+          avatar_url: raw.avatar_url,
+        },
+      }, this);
+      if (msg.author) msg.author = this._ensureCached(this.cache.users, msg.author.id, msg.author);
+      if (channel && !msg.channel) msg.channel = channel;
+      return msg;
+    });
+  }
+
+  // ============================================================================
+  // PUBLIC API METHODS - Reactions
+  // ============================================================================
+
+  /**
+   * Adds the bot's reaction to a message (adding it twice changes nothing)
+   * @param {string|number} channelId - Channel ID
+   * @param {string|number} messageId - Message ID
+   * @param {string|number|Emoji} emoji - Unicode emoji, custom emoji (id or Emoji) or '<&id>'
+   * @returns {Promise<{success: boolean, count: number}>} How many reacted with this emoji
+   * @example
+   * await client.addReaction(channelId, messageId, '✅');
+   */
+  async addReaction(channelId, messageId, emoji) {
+    return this._reactionRequest('put', `${this._reactionUrl(channelId, messageId, emoji)}/@me`);
+  }
+
+  /**
+   * Removes a reaction from a message
+   * @param {string|number} channelId - Channel ID
+   * @param {string|number} messageId - Message ID
+   * @param {string|number|Emoji} emoji - Unicode emoji, custom emoji (id or Emoji) or '<&id>'
+   * @param {string|number} [userId] - Whose reaction to remove (default: the bot's own; someone else's needs moderation rights)
+   * @returns {Promise<{success: boolean, count: number}>} How many still have this reaction
+   */
+  async removeReaction(channelId, messageId, emoji, userId) {
+    const target = userId === undefined ? '@me' : pathId(userId);
+    return this._reactionRequest('delete', `${this._reactionUrl(channelId, messageId, emoji)}/${target}`);
+  }
+
+  /**
+   * Removes every reaction of a message, or only those of one emoji. Needs moderation rights.
+   * @param {string|number} channelId - Channel ID
+   * @param {string|number} messageId - Message ID
+   * @param {string|number|Emoji} [emoji] - Only clear this emoji
+   * @returns {Promise<{success: boolean}>}
+   */
+  async clearReactions(channelId, messageId, emoji) {
+    return this._reactionRequest('delete', this._reactionUrl(channelId, messageId, emoji));
+  }
+
+  /**
+   * Fetches who reacted to a message with an emoji, ordered by user ID
+   * @param {string|number} channelId - Channel ID
+   * @param {string|number} messageId - Message ID
+   * @param {string|number|Emoji} emoji - Unicode emoji, custom emoji (id or Emoji) or '<&id>'
+   * @param {Object} options - Fetch options
+   * @param {number} options.limit - Maximum number of users (default: 25, max: 100)
+   * @param {string|number} options.after - Only users with an ID above this one
+   * @returns {Promise<User[]>} Array of user objects
+   */
+  async fetchReactionUsers(channelId, messageId, emoji, options = {}) {
+    const params = { limit: Math.min(options.limit || 25, 100) };
+    if (options.after !== undefined) params.after = options.after;
+
+    const users = await this._reactionRequest('get', this._reactionUrl(channelId, messageId, emoji), { params });
+
+    return users.map(u => {
+      // This route answers in camelCase with a string id, unlike the rest of the API.
+      const id = Number(u.id);
+      return this._ensureCached(this.cache.users, id, new User({
+        id,
+        username: u.username,
+        display_name: u.displayName,
+        avatar_url: u.avatarUrl,
+        is_bot: u.isBot,
+      }, this));
+    });
+  }
+
+  // ============================================================================
   // PUBLIC API METHODS - Typing Indicators
   // ============================================================================
 
@@ -1043,7 +1184,7 @@ class Client extends EventEmitter {
     }
 
     try {
-      const res = await this._axios.get(`/api/emojis/${id}`);
+      const res = await this._axios.get(`/api/emojis/${pathId(id)}`);
       const emoji = new Emoji(res.data);
       this.cache.emojis.set(emoji.id, emoji);
       return emoji;
@@ -1098,7 +1239,7 @@ class Client extends EventEmitter {
     }
 
     try {
-      const res = await this._axios.get(`/api/stickers/${id}`);
+      const res = await this._axios.get(`/api/stickers/${pathId(id)}`);
       const sticker = new Sticker(res.data);
       this.cache.stickers.set(sticker.id, sticker);
       return sticker;
@@ -1170,15 +1311,17 @@ class Client extends EventEmitter {
         ));
       }, this.config.connectionTimeout);
 
-      this.socket = io(global.apiUrl, {
-        auth: { token: global.token },
-        extraHeaders: { 'Origin': global.origin },
+      this.socket = io(this._apiUrl, {
+        auth: { token: this._token },
+        extraHeaders: { 'Origin': this._origin },
         timeout: 5000,
         reconnection: true,
         reconnectionDelay: this.config.reconnectionDelay,
         reconnectionAttempts: this.config.maxRetries,
         transports: ['websocket', 'polling']
       });
+
+      let connectedBefore = false;
 
       this.socket.on("connect", () => {
         clearTimeout(connectionTimeout);
@@ -1187,6 +1330,9 @@ class Client extends EventEmitter {
         this._setupSocketHandlers();
         this._startHeartbeat();
         resolve();
+
+        if (connectedBefore) this.emit("reconnect");
+        connectedBefore = true;
       });
 
       this.socket.on("disconnect", (reason) => {
@@ -1216,7 +1362,7 @@ class Client extends EventEmitter {
           errorMessage = "The provided token does not belong to a bot user";
         } else if (errorStr.includes("no valid entry point")) {
           errorCode = "BOTS_NOT_ALLOWED";
-          errorMessage = `Bots are not allowed through ${global.apiUrl}`;
+          errorMessage = `Bots are not allowed through ${this._apiUrl}`;
         } else if (errorStr.includes("401") || errorStr.includes("unauthorized")) {
           errorCode = "UNAUTHORIZED";
           errorMessage = "Invalid token";
@@ -1235,22 +1381,14 @@ class Client extends EventEmitter {
         if (errorCode === "NOT_A_BOT" || errorCode === "BOTS_NOT_ALLOWED") {
           this.socket.disconnect();
           reject(clientError);
-        } else if (this.retryCount >= this.config.maxRetries) {
+        } else if (!this.socket.active || this.retryCount >= this.config.maxRetries) {
+          // Not active: the server refused the handshake and no retry will follow.
           reject(clientError);
         }
       });
 
-      this.socket.on("reconnect", (attemptNumber) => {
-        this.isConnected = true;
-        this._startHeartbeat();
-        this.emit("reconnect", attemptNumber);
-      });
-
-      this.socket.on("reconnect_error", (error) => {
-        this.emit("error", error);
-      });
-
-      this.socket.on("reconnect_failed", () => {
+      // Since socket.io v3 the reconnection events live on the Manager.
+      this.socket.io.on("reconnect_failed", () => {
         this._stopHeartbeat();
         this.emit("error", new ClientError(
           "Failed to reconnect after maximum attempts",
@@ -1288,19 +1426,22 @@ class Client extends EventEmitter {
     /**
      * @event Client#messageCreate
      */
-    this.socket.on('message:new', async (data) => {
-      try {
-        if (this._sentMessages.has(data.id)) {
-          this._sentMessages.delete(data.id);
-          return;
-        }
+    this.socket.on('message:new', (data) => {
+      // One at a time: a fetch below must not let a later message overtake this one.
+      this._messageQueue = this._messageQueue.then(async () => {
+        try {
+          if (this._sentMessages.has(data.id)) {
+            this._sentMessages.delete(data.id);
+            return;
+          }
 
-        const msg = await this._processSocketMessage(data);
-        this._cacheMessage(msg);
-        this.emit("messageCreate", msg);
-      } catch (error) {
-        this.emit("error", error);
-      }
+          const msg = await this._processSocketMessage(data);
+          this._cacheMessage(msg);
+          this.emit("messageCreate", msg);
+        } catch (error) {
+          this.emit("error", error);
+        }
+      });
     });
 
     /**
@@ -1330,12 +1471,48 @@ class Client extends EventEmitter {
         }
       }
 
+      // The event carries no channel, so an uncached message stays partial.
       if (!msg) {
-        msg = await this._processSocketMessage(data);
-        this._cacheMessage(msg);
+        msg = new Message({ id, content, edited_at: editedAt }, this);
+        msg.edited = true;
       }
 
       this.emit('messageEdit', msg);
+    });
+
+    /**
+     * @event Client#messageReactionAdd
+     */
+    this.socket.on('reaction:added', (data) => {
+      this.emit('messageReactionAdd', this._applyReactionEvent(data, { added: true }));
+    });
+
+    /**
+     * @event Client#messageReactionRemove
+     */
+    this.socket.on('reaction:removed', (data) => {
+      this.emit('messageReactionRemove', this._applyReactionEvent(data));
+    });
+
+    /**
+     * @event Client#messageReactionClear
+     */
+    this.socket.on('reaction:cleared', (data) => {
+      this.emit('messageReactionClear', this._applyReactionEvent(data, { cleared: true }));
+    });
+
+    /**
+     * @event Client#messagePin
+     */
+    this.socket.on('message:pinned', (data) => {
+      this.emit('messagePin', this._applyPinEvent(data, true));
+    });
+
+    /**
+     * @event Client#messageUnpin
+     */
+    this.socket.on('message:unpinned', (data) => {
+      this.emit('messageUnpin', this._applyPinEvent(data, false));
     });
 
     /**
@@ -1412,6 +1589,11 @@ class Client extends EventEmitter {
     this.socket.on('rate:limited', (data) => {
       this.emit('rateLimited', data);
     });
+
+    // Most refused actions are only explained here, not in their ack.
+    this.socket.on('error', (data) => {
+      this.emit('error', new ClientError(data?.message || "Socket error", data?.type || "SOCKET_ERROR"));
+    });
   }
 
   /**
@@ -1433,6 +1615,12 @@ class Client extends EventEmitter {
     this.socket.off("channel:update");
     this.socket.off("channel:delete");
     this.socket.off("rate:limited");
+    this.socket.off("reaction:added");
+    this.socket.off("reaction:removed");
+    this.socket.off("reaction:cleared");
+    this.socket.off("message:pinned");
+    this.socket.off("message:unpinned");
+    this.socket.off("error");
   }
 
   /**
@@ -1487,30 +1675,36 @@ class Client extends EventEmitter {
         ? 'NOT_A_BOT'
         : data?.error || 'UNKNOWN_ERROR';
       const errorMessage = data?.message || error.message;
+      const fail = (message, code) => {
+        const clientError = new ClientError(message, code);
+        clientError.status = status;
+        if (data?.retryAfter != null) clientError.retryAfter = data.retryAfter;
+        return clientError;
+      };
 
       switch (status) {
         case 401:
-          throw new ClientError(
+          throw fail(
             errorMessage || "Invalid or expired token",
             errorCode || "UNAUTHORIZED"
           );
         case 403:
-          throw new ClientError(
+          throw fail(
             errorMessage || "Token lacks necessary permissions",
             errorCode || "FORBIDDEN"
           );
         case 404:
-          throw new ClientError(
+          throw fail(
             errorMessage || "Resource not found",
             errorCode || "NOT_FOUND"
           );
         case 429:
-          throw new ClientError(
+          throw fail(
             errorMessage || "Rate limit exceeded",
-            errorCode || "RATE_LIMITED"
+            "RATE_LIMITED"
           );
         default:
-          throw new ClientError(
+          throw fail(
             errorMessage || "API request failed",
             errorCode
           );
@@ -1525,6 +1719,28 @@ class Client extends EventEmitter {
         error.code || "NETWORK_ERROR"
       );
     }
+  }
+
+  /**
+   * Emits a socket event and waits for its ack. The server answers false or
+   * { error } when refusing, and does not answer at all on some validations,
+   * so without a limit the caller could wait forever.
+   * @private
+   */
+  _emitWithAck(event, payload, errorCode) {
+    return new Promise((resolve, reject) => {
+      this.socket.timeout(this.config.ackTimeout).emit(event, payload, (timedOut, response) => {
+        if (timedOut) {
+          return reject(new ClientError(`No response to ${event}`, "ACK_TIMEOUT"));
+        }
+        if (!response || response.error) {
+          const error = new ClientError(response?.error || `${event} was refused`, errorCode);
+          if (response?.retryAfter != null) error.retryAfter = response.retryAfter;
+          return reject(error);
+        }
+        resolve(response);
+      });
+    });
   }
 
   /**
@@ -1551,6 +1767,16 @@ class Client extends EventEmitter {
   async _processSocketMessage(data) {
     const msg = new Message(data, this);
 
+    if (!msg.channel && data.channel_id) {
+      msg.channel = await this.fetchChannel(data.channel_id);
+    }
+
+    // Comes before the author: only the member list says who is a bot. A failure
+    // here must not cost the message.
+    if (msg.channel && msg.channel.memberCount !== msg.channel.members.size) {
+      await msg.channel.members.fetch().catch(() => {});
+    }
+
     if (!msg.author && data.user_id) {
       const cachedUser = this.cache.users.get(data.user_id);
       if (cachedUser) {
@@ -1567,14 +1793,6 @@ class Client extends EventEmitter {
         }, this);
         this.cache.users.set(msg.author.id, msg.author);
       }
-    }
-
-    if (!msg.channel && data.channel_id) {
-      msg.channel = await this.fetchChannel(data.channel_id);
-    }
-
-    if (msg.channel?.memberCount !== msg.channel?.members?.size) {
-      await msg.channel.members.fetch();
     }
 
     if (!msg.sticker && data.sticker_id) {
@@ -1639,15 +1857,81 @@ class Client extends EventEmitter {
    * @private
    */
   _updateMessageContent(messageId, content, editedAt) {
-    for (const [channelId, messages] of this.cache.messages) {
-      const msg = messages.find(m => m.id === messageId);
-      if (msg) {
-        msg.content = content;
-        msg.editedAt = editedAt;
-        msg.edited = true;
-        break;
-      }
+    for (const msg of this._findCachedMessages(messageId)) {
+      msg.content = content;
+      msg.editedAt = editedAt;
+      msg.edited = true;
     }
+  }
+
+  /**
+   * Finds every cached copy of a message
+   * @private
+   */
+  _findCachedMessages(messageId) {
+    const found = new Set();
+
+    for (const messages of this.cache.messages.values()) {
+      const msg = messages.find(m => m.id === messageId);
+      if (msg) found.add(msg);
+    }
+
+    for (const channel of this.cache.channels.values()) {
+      const msg = channel.messages.get(messageId);
+      if (msg) found.add(msg);
+    }
+
+    return [...found];
+  }
+
+  /**
+   * Applies a reaction event to the cached message
+   * @private
+   * @returns {Object} The event data plus the cached `message`, or null if not cached
+   */
+  _applyReactionEvent(data, { added = false, cleared = false } = {}) {
+    const { messageId, emoji, userId, count } = data;
+    const messages = this._findCachedMessages(messageId);
+
+    for (const msg of messages) {
+      if (cleared) {
+        msg.reactions = emoji ? msg.reactions.filter(r => r.emoji !== emoji) : [];
+        continue;
+      }
+
+      const mine = userId === this.user?.id;
+      let reaction = msg.reactions.find(r => r.emoji === emoji);
+
+      if (count === 0) {
+        msg.reactions = msg.reactions.filter(r => r !== reaction);
+        continue;
+      }
+
+      if (!reaction) {
+        reaction = { emoji, count, me: false };
+        msg.reactions.push(reaction);
+      }
+
+      reaction.count = count;
+      if (mine) reaction.me = added;
+    }
+
+    return { ...data, message: messages[0] ?? null };
+  }
+
+  /**
+   * Applies a pin event to the cached message
+   * @private
+   * @returns {Object} The event data plus the cached `message`, or null if not cached
+   */
+  _applyPinEvent(data, pinned) {
+    const messages = this._findCachedMessages(data.messageId);
+    for (const msg of messages) {
+      msg.pinned = pinned;
+      msg.pinnedAt = pinned ? (data.pinnedAt ?? null) : null;
+      msg.pinnedBy = pinned ? (data.pinnedBy ?? null) : null;
+    }
+    return { ...data, message: messages[0] ?? null };
   }
 
   // ============================================================================
@@ -1673,10 +1957,8 @@ class Client extends EventEmitter {
    * @private
    */
   _updateChannel(data) {
-    if (this.cache.channels.has(data.id)) {
-      const channel = this.cache.channels.get(data.id);
-      Object.assign(channel, data);
-    }
+    const channel = this.cache.channels.get(data.channelId);
+    if (channel) Object.assign(channel, data.updates);
   }
 
   /**
@@ -1688,6 +1970,68 @@ class Client extends EventEmitter {
     if (existing) return existing;
     map.set(key, value);
     return value;
+  }
+
+  // ============================================================================
+  // PRIVATE METHODS - Reactions
+  // ============================================================================
+
+  /**
+   * Builds the reactions URL of a message, optionally for one emoji
+   * @private
+   */
+  _reactionUrl(channelId, messageId, emoji) {
+    const base = `/api/channels/${pathId(channelId)}/messages/${pathId(messageId)}/reactions`;
+    return emoji === undefined ? base : `${base}/${encodeURIComponent(resolveEmoji(emoji))}`;
+  }
+
+  /**
+   * Calls a reactions route, waiting out the rate limit: reacting in bursts is
+   * normal and the server says how long to wait.
+   * @private
+   */
+  async _reactionRequest(method, url, config = {}) {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        const res = await this._axios.request({ method, url, ...config });
+        return res.data;
+      } catch (error) {
+        if (error.code !== "RATE_LIMITED" || attempt >= REACTION_RETRIES) {
+          throw error instanceof ClientError ? error : new ClientError(error.message, "REACTION_ERROR");
+        }
+        await new Promise(resolve => setTimeout(resolve, error.retryAfter ?? 1000));
+      }
+    }
+  }
+
+  // ============================================================================
+  // PRIVATE METHODS - Pins
+  // ============================================================================
+
+  /**
+   * Builds the pins URL of a channel
+   * @private
+   */
+  _pinUrl(channelId) {
+    return `/api/channels/${pathId(channelId)}/pins`;
+  }
+
+  /**
+   * Calls a pins route, waiting out the rate limit once
+   * @private
+   */
+  async _pinRequest(method, url, config = {}) {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        const res = await this._axios.request({ method, url, ...config });
+        return res.data;
+      } catch (error) {
+        if (error.code !== "RATE_LIMITED" || attempt >= PIN_RETRIES) {
+          throw error instanceof ClientError ? error : new ClientError(error.message, "PIN_ERROR");
+        }
+        await new Promise(resolve => setTimeout(resolve, error.retryAfter ?? 1000));
+      }
+    }
   }
 
   // ============================================================================
@@ -1820,6 +2164,11 @@ class Client extends EventEmitter {
    * @returns {this}
    */
   emit(event, payload) {
+    // EventEmitter throws on an unheard 'error', which would kill the bot.
+    if (event === 'error' && this.listenerCount('error') === 0) {
+      console.error('[beniocord.js]', payload);
+      return false;
+    }
     return super.emit(event, payload);
   }
 }
@@ -1835,10 +2184,8 @@ class ClientError extends Error {
    * @param {string} code - Error code
   */
   constructor(message, code) {
-    const parsed = typeof parseErrors === 'function'
-      ? (code ? parseErrors(code) : parseErrors(message))
-      : null;
-    super(parsed || message);
+    const parsed = parseErrors(code);
+    super(parsed !== code ? parsed : parseErrors(message));
     this.name = 'ClientError';
     this.code = code;
   }

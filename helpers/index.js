@@ -55,6 +55,12 @@ const errors = {
     ERR_URL_TOO_LONG: "URL is too long.",
     ERR_URL_INVALID: "URL is invalid.",
     FILE_TOO_LARGE: "This file is too large.",
+    INVALID_EMOJI: "Invalid emoji.",
+    EMOJI_NOT_FOUND: "Emoji not found.",
+    EMOJI_NOT_ALLOWED: "You do not have access to this emoji.",
+    MAX_REACTIONS_REACHED: "This message already has the maximum number of different reactions.",
+    NO_PERMISSION: "You do not have permission to do this.",
+    INVALID_CURSOR: "Invalid pagination cursor.",
 };
 
 function formatUrl(url) {

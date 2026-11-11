@@ -1,5 +1,4 @@
 const { formatUrl } = require("../helpers");
-let client;
 
 /**
  * @internal
@@ -35,7 +34,7 @@ class User {
    * }
    */
   constructor(data, clientInstance) {
-    client = clientInstance;
+    Object.defineProperty(this, '_client', { value: clientInstance });
 
     this.id = data.id;
     this.username = data.username;
@@ -71,8 +70,8 @@ class User {
    * const freshUser = await user.fetch();
    */
   async fetch(force = false) {
-    if (!client) throw new Error("Client instance not available.");
-    const updatedUser = await client.fetchUser(this.id, force);
+    if (!this._client) throw new Error("Client instance not available.");
+    const updatedUser = await this._client.fetchUser(this.id, force);
     Object.assign(this, updatedUser);
     return this;
   }

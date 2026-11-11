@@ -2,8 +2,6 @@ const { formatUrl } = require('../helpers');
 const MessageCollector = require('./MessageCollector');
 const Collection = require('@discordjs/collection').Collection;
 
-let client;
-
 /**
  * @internal
  */
@@ -43,7 +41,7 @@ class Channel {
    * }
    */
   constructor(data, clientInstance) {
-    client = clientInstance;
+    Object.defineProperty(this, '_client', { value: clientInstance });
 
     this.id = data.id;
     this.name = data.name;
@@ -63,11 +61,13 @@ class Channel {
      */
     this.members = new Collection();
     this.members.fetch = async () => {
-      const members = await client.fetchChannelMembers(this.id);
+      const members = await this._client.fetchChannelMembers(this.id);
       this.members.clear();
       for (const member of members) {
         this.members.set(member.id, member);
       }
+      // Otherwise a stale count makes every incoming message fetch the list again.
+      this.memberCount = this.members.size;
       return this.members;
     };
 
@@ -77,12 +77,9 @@ class Channel {
      */
     this.messages = new Collection();
     this.messages.fetch = async (id) => {
-      if (client.fetchMessage) {
-        const message = await client.fetchMessage(this.id, id);
-        if (message) this.messages.set(message.id, message);
-        return message;
-      }
-      return null;
+      const message = await this._client.fetchMessage(this.id, id);
+      if (message) this.messages.set(message.id, message);
+      return message;
     };
 
     Object.defineProperty(this.members, '_cache', {
@@ -99,7 +96,15 @@ class Channel {
    * @returns {Promise<Message>} The sent message.
    */
   async send(content, opts = {}) {
-    return client.sendMessage(this.id, content, opts);
+    return this._client.sendMessage(this.id, content, opts);
+  }
+
+  /**
+   * Fetches the pinned messages of this channel, most recently pinned first.
+   * @returns {Promise<Message[]>}
+   */
+  async fetchPins() {
+    return this._client.fetchPinnedMessages(this.id);
   }
 
   /**
@@ -107,7 +112,7 @@ class Channel {
    * @returns {Promise<void>}
    */
   startTyping() {
-    return client.startTyping(this.id);
+    return this._client.startTyping(this.id);
   }
 
   /**
@@ -115,7 +120,7 @@ class Channel {
    * @returns {Promise<void>}
    */
   stopTyping() {
-    return client.stopTyping(this.id);
+    return this._client.stopTyping(this.id);
   }
 
   /**
@@ -124,7 +129,7 @@ class Channel {
    * @returns {MessageCollector} The created message collector.
    */
   createMessageCollector(options = {}) {
-    return new MessageCollector(this, options, client);
+    return new MessageCollector(this, options, this._client);
   }
 }
 

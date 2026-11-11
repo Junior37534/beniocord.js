@@ -1,8 +1,7 @@
 const User = require("./User");
 const Channel = require("./Channel");
+const { MessageAttachment } = require("./Util");
 const { formatUrl } = require('../helpers/index');
-
-let client;
 
 /**
  * @internal
@@ -30,6 +29,9 @@ class Message {
    * @param {string} data.created_at - Timestamp when the message was created.
    * @param {number|null} [data.sticker_id] - Sticker ID attached to the message.
    * @param {string|null} [data.embed_data] - Embed data if present.
+   * @param {Array<{emoji: string, count: number, me: boolean}>} [data.reactions] - Reactions on the message.
+   * @param {string|null} [data.pinned_at] - When the message was pinned (null if it isn't).
+   * @param {number|null} [data.pinned_by] - Who pinned the message.
    * @param {Object} clientInstance - The client instance.
    * @returns {Message} The created Message instance.
    * @example
@@ -46,6 +48,10 @@ class Message {
    *   createdAt: '2025-12-20T20:54:46.247Z',
    *   stickerId: 3,
    *   embedData: null,
+   *   reactions: [ { emoji: '✅', count: 2, me: true } ],
+   *   pinned: false,
+   *   pinnedAt: null,
+   *   pinnedBy: null,
    *   replyToId: 1874,
    *   replyMessage: {
    *     content: 'Hello world',
@@ -61,6 +67,8 @@ class Message {
    * }
    */
   constructor(data, clientInstance) {
+    Object.defineProperty(this, '_client', { value: clientInstance });
+
     this.id = data.id;
     this.channelId = data.channel_id;
     this.userId = data.user_id;
@@ -73,6 +81,10 @@ class Message {
     this.createdAt = data.created_at;
     this.stickerId = data.sticker_id ?? null;
     this.embedData = data.embed_data ?? null;
+    this.reactions = (data.reactions ?? []).map(r => ({ ...r }));
+    this.pinned = data.pinned_at != null;
+    this.pinnedAt = data.pinned_at ?? null;
+    this.pinnedBy = data.pinned_by ?? null;
     // Reply fields
     if (data.reply_to != null) {
       this.replyToId = data.reply_to;
@@ -91,7 +103,6 @@ class Message {
 
     this.author = data.user ? new User(data.user, clientInstance) : null;
     this.channel = data.channel ? new Channel(data.channel, clientInstance) : null;
-    client = clientInstance;
   }
 
   /**
@@ -105,9 +116,9 @@ class Message {
    * await msg.reply("Thanks for your message!");
    */
   async reply(content, opts = {}) {
-    return client.sendMessage(this.channel.id, content, {
+    return this._client.sendMessage(this.channelId ?? this.channel.id, content, {
       replyTo: this.id,
-      ...opts
+      ...(opts instanceof MessageAttachment ? { attachment: opts } : opts)
     });
   }
 
@@ -121,7 +132,7 @@ class Message {
    * await msg.edit("Updated content!");
    */
   async edit(content) {
-    return client.editMessage(this.id, content);
+    return this._client.editMessage(this.id, content);
   }
 
   /**
@@ -133,7 +144,75 @@ class Message {
    * await msg.delete();
    */
   async delete() {
-    return client.deleteMessage(this.id);
+    return this._client.deleteMessage(this.id);
+  }
+
+  /**
+   * Pins this message to its channel.
+   * @returns {Promise<{success: boolean, changed: boolean, pinnedAt: string|null}>}
+   *
+   * @example
+   * await msg.pin();
+   */
+  async pin() {
+    const result = await this._client.pinMessage(this.channelId ?? this.channel.id, this.id);
+    this.pinned = true;
+    if (result?.pinnedAt) this.pinnedAt = result.pinnedAt;
+    return result;
+  }
+
+  /**
+   * Unpins this message.
+   * @returns {Promise<{success: boolean, changed: boolean}>}
+   */
+  async unpin() {
+    const result = await this._client.unpinMessage(this.channelId ?? this.channel.id, this.id);
+    this.pinned = false;
+    this.pinnedAt = null;
+    this.pinnedBy = null;
+    return result;
+  }
+
+  /**
+   * Reacts to this message.
+   * @param {string|number|Object} emoji - Unicode emoji, custom emoji (id or Emoji) or '<&id>'.
+   * @returns {Promise<{success: boolean, count: number}>} How many reacted with this emoji.
+   *
+   * @example
+   * // Reacting to a message
+   * await msg.react("✅");
+   */
+  async react(emoji) {
+    return this._client.addReaction(this.channelId ?? this.channel.id, this.id, emoji);
+  }
+
+  /**
+   * Removes a reaction from this message.
+   * @param {string|number|Object} emoji - The reaction to remove.
+   * @param {string|number} [userId] - Whose reaction (default: the bot's own).
+   * @returns {Promise<{success: boolean, count: number}>} How many still have this reaction.
+   */
+  async removeReaction(emoji, userId) {
+    return this._client.removeReaction(this.channelId ?? this.channel.id, this.id, emoji, userId);
+  }
+
+  /**
+   * Removes every reaction of this message, or only those of one emoji.
+   * @param {string|number|Object} [emoji] - Only clear this emoji.
+   * @returns {Promise<{success: boolean}>}
+   */
+  async clearReactions(emoji) {
+    return this._client.clearReactions(this.channelId ?? this.channel.id, this.id, emoji);
+  }
+
+  /**
+   * Fetches who reacted to this message with an emoji.
+   * @param {string|number|Object} emoji - The reaction to look up.
+   * @param {Object} [options] - See Client#fetchReactionUsers.
+   * @returns {Promise<User[]>}
+   */
+  async fetchReactionUsers(emoji, options) {
+    return this._client.fetchReactionUsers(this.channelId ?? this.channel.id, this.id, emoji, options);
   }
 }
 
